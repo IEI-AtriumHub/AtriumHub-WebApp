@@ -5,6 +5,8 @@
 A complete, enterprise-ready SaaS platform for churches, nonprofits, and mission-driven organizations to manage and fulfill community needs.
 
 ---
+// test commit - safe to remove
+
 
 ## 📋 Table of Contents
 
