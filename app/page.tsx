@@ -5,11 +5,11 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import Link from 'next/link';
 import Button from '@/components/ui/Button';
-import { 
-  PlusIcon, 
+import {
+  PlusIcon,
   ClipboardDocumentListIcon,
   UserGroupIcon,
-  Cog6ToothIcon 
+  Cog6ToothIcon
 } from '@heroicons/react/24/outline';
 
 export default function HomePage() {
@@ -52,13 +52,23 @@ export default function HomePage() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">
-            Welcome to AtriumHub
-          </h2>
-          <p className="text-gray-600">
-            Your needs-sharing platform. What would you like to do?
-          </p>
+        <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">
+              Welcome to AtriumHub
+            </h2>
+            <p className="text-gray-600">
+              Your needs-sharing platform. What would you like to do?
+            </p>
+          </div>
+
+          {/* NEW: Primary CTA */}
+          <Link href="/needs/new">
+            <Button>
+              <PlusIcon className="h-5 w-5 mr-2" />
+              Create a Need
+            </Button>
+          </Link>
         </div>
 
         {/* Quick Actions */}
