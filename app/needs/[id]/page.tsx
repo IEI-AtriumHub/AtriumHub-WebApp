@@ -71,6 +71,21 @@ const urgencyConfig: Record<string, { color: string; bg: string }> = {
   CRITICAL: { color: 'text-red-700', bg: 'bg-red-100' },
 };
 
+function getNeedTypeLabel(needType: string) {
+  switch (needType) {
+    case 'WORK':
+      return '🛠️ Work/Service';
+    case 'FINANCIAL':
+      return '💰 Financial';
+    case 'EVENT':
+      return '📅 Event';
+    case 'REQUEST':
+      return '🙋 Request';
+    default:
+      return needType;
+  }
+}
+
 export default function NeedDetailsPage() {
   const { user, loading: authLoading, isAdmin } = useAuth();
   const [need, setNeed] = useState<Need | null>(null);
@@ -97,11 +112,33 @@ export default function NeedDetailsPage() {
           .eq('id', needId)
           .single();
 
-        if (error) throw error;
+        if (error) {
+          // Common cases:
+          // - Not found
+          // - RLS blocks access (often manifests as "no rows" when using .single())
+          // PostgREST uses PGRST116 for "No rows" when .single() is used.
+          const code = (error as any)?.code;
+          const status = (error as any)?.status;
+
+          if (code === 'PGRST116' || status === 406) {
+            setNeed(null);
+            return;
+          }
+
+          if (status === 401 || status === 403) {
+            setNeed(null);
+            toast.error('You do not have access to this need.');
+            return;
+          }
+
+          throw error;
+        }
+
         setNeed(data);
       } catch (error) {
         console.error('Error fetching need:', error);
         toast.error('Failed to load need details');
+        setNeed(null);
       } finally {
         setLoading(false);
       }
@@ -243,7 +280,7 @@ export default function NeedDetailsPage() {
     return (
       <PageContainer title="Need Not Found">
         <div className="bg-white rounded-lg shadow p-8 text-center">
-          <p className="text-gray-500">This need could not be found.</p>
+          <p className="text-gray-500">This need could not be found (or you don&apos;t have access to it).</p>
           <Link href="/needs" className="mt-4 inline-block">
             <Button>Back to Browse Needs</Button>
           </Link>
@@ -326,7 +363,7 @@ export default function NeedDetailsPage() {
                   {need.urgency} Urgency
                 </span>
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-700">
-                  {need.need_type === 'WORK' ? '🛠️ Work/Service' : '💰 Financial'}
+                  {getNeedTypeLabel(need.need_type)}
                 </span>
                 {need.need_categories?.name && (
                   <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-700">
@@ -361,8 +398,8 @@ export default function NeedDetailsPage() {
               <div>
                 <h2 className="text-lg font-semibold text-blue-800">Help is on the way!</h2>
                 <p className="text-blue-600">
-                  {isClaimedByMe 
-                    ? "You've claimed this need. Contact the requester to coordinate." 
+                  {isClaimedByMe
+                    ? "You've claimed this need. Contact the requester to coordinate."
                     : `${need.claimed_by_user.full_name} is helping with this need.`}
                 </p>
               </div>
@@ -526,7 +563,9 @@ export default function NeedDetailsPage() {
               {need.claimed_at && need.claimed_by_user && (
                 <div className="flex items-center gap-3 text-blue-600">
                   <HandRaisedIcon className="h-5 w-5" />
-                  <span>Claimed by {need.claimed_by_user.full_name} on {new Date(need.claimed_at).toLocaleString()}</span>
+                  <span>
+                    Claimed by {need.claimed_by_user.full_name} on {new Date(need.claimed_at).toLocaleString()}
+                  </span>
                 </div>
               )}
               {need.status === 'COMPLETED' && (
