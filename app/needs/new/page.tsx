@@ -60,6 +60,9 @@ export default function CreateNeedPage() {
   const router = useRouter();
   const supabase = createClientComponentClient();
 
+  // Compute the "effective" org for this page
+  const effectiveOrgId = isSuperAdmin ? selectedOrgId : (userOrganization?.id || '');
+
   // Fetch all organizations for Super Admin
   useEffect(() => {
     const fetchOrganizations = async () => {
@@ -93,6 +96,7 @@ export default function CreateNeedPage() {
         }
       } catch (error) {
         console.error('Error fetching organizations:', error);
+        toast.error('Failed to load organizations');
       } finally {
         setLoading(false);
       }
@@ -103,36 +107,33 @@ export default function CreateNeedPage() {
     }
   }, [authLoading, user, userOrganization, isSuperAdmin, supabase]);
 
-  // Fetch groups and categories when selected organization changes
+  // Fetch groups and categories when selected organization changes (or for normal users, when org is known)
   useEffect(() => {
     const fetchOrgData = async () => {
-      if (!selectedOrgId) {
+      if (!effectiveOrgId) {
         setGroups([]);
         setCategories([]);
         return;
       }
 
       try {
-        // Fetch groups for selected organization
+        // Fetch groups for effective organization
         const { data: groupsData, error: groupsError } = await supabase
           .from('groups')
           .select('id, name')
-          .eq('organization_id', selectedOrgId)
+          .eq('organization_id', effectiveOrgId)
           .eq('is_active', true)
           .order('name');
 
         if (groupsError) throw groupsError;
         setGroups(groupsData || []);
 
-        // ✅ Fetch categories:
-        // - include global categories (organization_id is null)
-        // - include org-specific categories (organization_id = selectedOrgId)
-        // - only active and not hidden (treat null hidden as not hidden)
+        // Fetch categories (global + org-specific), active + not hidden
         const { data: categoriesData, error: categoriesError } = await supabase
           .from('need_categories')
           .select('id, name')
           .eq('is_active', true)
-          .or(`organization_id.is.null,organization_id.eq.${selectedOrgId}`)
+          .or(`organization_id.is.null,organization_id.eq.${effectiveOrgId}`)
           .or('is_hidden.is.null,is_hidden.eq.false')
           .order('display_order', { ascending: true })
           .order('name', { ascending: true });
@@ -142,13 +143,14 @@ export default function CreateNeedPage() {
 
         // Reset selections when org changes
         setFormData((prev) => ({ ...prev, group_id: '', category_id: '' }));
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error fetching org data:', error);
+        toast.error(error?.message || 'Failed to load groups/categories');
       }
     };
 
     fetchOrgData();
-  }, [selectedOrgId, supabase]);
+  }, [effectiveOrgId, supabase]);
 
   // Update selectedOrg when selectedOrgId changes
   useEffect(() => {
@@ -166,8 +168,8 @@ export default function CreateNeedPage() {
       return;
     }
 
-    if (!selectedOrgId) {
-      toast.error('Please select an organization');
+    if (!effectiveOrgId) {
+      toast.error('No organization selected/assigned');
       return;
     }
 
@@ -185,32 +187,25 @@ export default function CreateNeedPage() {
         need_type: formData.need_type,
         urgency: formData.urgency,
         status: 'PENDING_APPROVAL',
-        organization_id: selectedOrgId,
+        organization_id: effectiveOrgId,
         group_id: formData.group_id,
         requester_user_id: user.id,
         submitted_at: new Date().toISOString(),
       };
 
-      // Add category if selected
       if (formData.category_id) {
         needData.category_id = formData.category_id;
       }
 
-      // Add type-specific fields
       if (formData.need_type === 'WORK') {
         if (formData.work_location) needData.work_location = formData.work_location;
         if (formData.work_start_date) needData.work_start_date = formData.work_start_date;
         if (formData.work_end_date) needData.work_end_date = formData.work_end_date;
-        if (formData.work_estimated_hours)
-          needData.work_estimated_hours = parseFloat(formData.work_estimated_hours);
+        if (formData.work_estimated_hours) needData.work_estimated_hours = parseFloat(formData.work_estimated_hours);
         if (formData.work_skills_required)
-          needData.work_skills_required = formData.work_skills_required
-            .split(',')
-            .map((s) => s.trim());
+          needData.work_skills_required = formData.work_skills_required.split(',').map((s) => s.trim());
         if (formData.work_tools_needed)
-          needData.work_tools_needed = formData.work_tools_needed
-            .split(',')
-            .map((s) => s.trim());
+          needData.work_tools_needed = formData.work_tools_needed.split(',').map((s) => s.trim());
       } else if (formData.need_type === 'FINANCIAL') {
         if (formData.financial_amount) needData.financial_amount = parseFloat(formData.financial_amount);
         if (formData.financial_currency) needData.financial_currency = formData.financial_currency;
@@ -219,7 +214,6 @@ export default function CreateNeedPage() {
       }
 
       const { error } = await supabase.from('needs').insert([needData]);
-
       if (error) throw error;
 
       toast.success('Need submitted successfully! It will be reviewed by an admin.');
@@ -298,9 +292,7 @@ export default function CreateNeedPage() {
           <div className="flex-1">
             {isSuperAdmin ? (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Creating need for organization:
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Creating need for organization:</label>
                 <select
                   value={selectedOrgId}
                   onChange={(e) => setSelectedOrgId(e.target.value)}
@@ -389,10 +381,10 @@ export default function CreateNeedPage() {
                     onChange={(e) => setFormData({ ...formData, group_id: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     required
-                    disabled={!selectedOrgId}
+                    disabled={!effectiveOrgId}
                   >
                     <option value="">
-                      {!selectedOrgId
+                      {!effectiveOrgId
                         ? 'Select an organization first'
                         : groups.length === 0
                         ? 'No groups available - create one first'
@@ -404,7 +396,7 @@ export default function CreateNeedPage() {
                       </option>
                     ))}
                   </select>
-                  {selectedOrgId && groups.length === 0 && (
+                  {effectiveOrgId && groups.length === 0 && (
                     <p className="mt-1 text-sm text-amber-600">
                       <Link href="/admin/groups" className="underline hover:text-amber-700">
                         Create a group
@@ -420,10 +412,10 @@ export default function CreateNeedPage() {
                     value={formData.category_id}
                     onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    disabled={!selectedOrgId}
+                    disabled={!effectiveOrgId}
                   >
                     <option value="">
-                      {!selectedOrgId
+                      {!effectiveOrgId
                         ? 'Select an organization first'
                         : categories.length === 0
                         ? 'No categories available (optional)'
@@ -523,7 +515,7 @@ export default function CreateNeedPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Purpose / What it's for</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Purpose / What it&apos;s for</label>
                   <textarea
                     value={formData.financial_purpose}
                     onChange={(e) => setFormData({ ...formData, financial_purpose: e.target.value })}
@@ -550,7 +542,7 @@ export default function CreateNeedPage() {
                 Cancel
               </Button>
             </Link>
-            <Button type="submit" loading={submitting} disabled={!selectedOrgId || !formData.group_id}>
+            <Button type="submit" loading={submitting} disabled={!effectiveOrgId || !formData.group_id}>
               Submit Need
             </Button>
           </div>
