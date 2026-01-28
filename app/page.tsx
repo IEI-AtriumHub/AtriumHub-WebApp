@@ -38,14 +38,44 @@ export default function HomePage() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-gray-900">AtriumHub</h1>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">Welcome, {user.full_name}</span>
-            <Link href="/profile">
-              <Button variant="outline" size="sm">Profile</Button>
-            </Link>
-            <Button variant="outline" size="sm" onClick={signOut}>Sign Out</Button>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex flex-col gap-3">
+            {/* Top row: Brand + user actions */}
+            <div className="flex justify-between items-center">
+              <h1 className="text-2xl font-bold text-gray-900">AtriumHub</h1>
+
+              <div className="flex items-center gap-4">
+                <span className="text-sm text-gray-600">Welcome, {user.full_name}</span>
+                <Link href="/profile">
+                  <Button variant="outline" size="sm">Profile</Button>
+                </Link>
+                <Button variant="outline" size="sm" onClick={signOut}>Sign Out</Button>
+              </div>
+            </div>
+
+            {/* NEW: User top menu */}
+            <nav className="flex flex-wrap items-center gap-2">
+              <Link href="/needs">
+                <Button variant="outline" size="sm">Browse Needs</Button>
+              </Link>
+
+              <Link href="/my-needs">
+                <Button variant="outline" size="sm">My Needs</Button>
+              </Link>
+
+              <Link href="/needs/new">
+                <Button size="sm">
+                  <PlusIcon className="h-4 w-4 mr-2" />
+                  Create a Need
+                </Button>
+              </Link>
+
+              {displayIsAdmin && (
+                <Link href="/admin">
+                  <Button variant="outline" size="sm">Admin</Button>
+                </Link>
+              )}
+            </nav>
           </div>
         </div>
       </header>
@@ -62,7 +92,7 @@ export default function HomePage() {
             </p>
           </div>
 
-          {/* NEW: Primary CTA */}
+          {/* Primary CTA */}
           <Link href="/needs/new">
             <Button>
               <PlusIcon className="h-5 w-5 mr-2" />
