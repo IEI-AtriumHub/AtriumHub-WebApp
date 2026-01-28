@@ -35,8 +35,23 @@ const urgencyColors: Record<string, string> = {
   CRITICAL: 'bg-red-100 text-red-700',
 };
 
+function getNeedTypeLabel(needType: string) {
+  switch (needType) {
+    case 'WORK':
+      return '🛠️ Work';
+    case 'FINANCIAL':
+      return '💰 Financial';
+    case 'EVENT':
+      return '📅 Event';
+    case 'REQUEST':
+      return '🙋 Request';
+    default:
+      return needType;
+  }
+}
+
 export default function NeedsPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, organization, loading: authLoading, isSuperAdmin } = useAuth();
   const [needs, setNeeds] = useState<Need[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +60,14 @@ export default function NeedsPage() {
   useEffect(() => {
     const fetchNeeds = async () => {
       try {
-        const { data, error } = await supabase
+        // Require org context for non-superadmin users
+        if (!isSuperAdmin && !organization?.id) {
+          setNeeds([]);
+          setError('No organization selected or assigned for this user.');
+          return;
+        }
+
+        let query = supabase
           .from('needs')
           .select(`
             id,
@@ -63,8 +85,16 @@ export default function NeedsPage() {
           .eq('status', 'APPROVED_OPEN')
           .order('created_at', { ascending: false });
 
+        // ✅ Tenant isolation in the UI: normal users only see needs in their org
+        if (!isSuperAdmin && organization?.id) {
+          query = query.eq('organization_id', organization.id);
+        }
+
+        const { data, error } = await query;
+
         if (error) throw error;
         setNeeds(data || []);
+        setError(null);
       } catch (error: any) {
         console.error('Error fetching needs:', error);
         setError(error.message || 'Failed to load needs');
@@ -76,7 +106,7 @@ export default function NeedsPage() {
     if (!authLoading && user) {
       fetchNeeds();
     }
-  }, [authLoading, user, supabase]);
+  }, [authLoading, user, organization?.id, isSuperAdmin, supabase]);
 
   if (loading) {
     return (
@@ -127,18 +157,28 @@ export default function NeedsPage() {
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
                     <h3 className="text-lg font-semibold text-gray-900">{need.title}</h3>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${urgencyColors[need.urgency] || 'bg-gray-100 text-gray-600'}`}>
+
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        urgencyColors[need.urgency] || 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
                       {need.urgency}
                     </span>
+
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                      {need.need_type === 'WORK' ? '🛠️ Work' : '💰 Financial'}
+                      {getNeedTypeLabel(need.need_type)}
                     </span>
                   </div>
+
                   <p className="text-sm text-gray-500 mb-2">
-                    Posted by {need.users?.full_name || 'Unknown'} • {need.organizations?.display_name}
+                    Posted by {need.users?.full_name || 'Unknown'}
+                    {need.organizations?.display_name ? ` • ${need.organizations.display_name}` : null}
                   </p>
+
                   <p className="text-gray-600 line-clamp-2">{need.description}</p>
                 </div>
+
                 <div className="ml-4 flex flex-col items-end gap-2">
                   {need.need_categories?.name && (
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
@@ -147,10 +187,12 @@ export default function NeedsPage() {
                   )}
                 </div>
               </div>
+
               <div className="mt-4 flex justify-between items-center">
                 <span className="text-sm text-gray-400">
                   {new Date(need.created_at).toLocaleDateString()}
                 </span>
+
                 <div className="flex gap-2">
                   {user?.id !== need.requester_user_id && (
                     <Link href={`/needs/${need.id}`}>
@@ -160,6 +202,7 @@ export default function NeedsPage() {
                       </Button>
                     </Link>
                   )}
+
                   <Link href={`/needs/${need.id}`}>
                     <Button variant="outline" size="sm">
                       View Details
