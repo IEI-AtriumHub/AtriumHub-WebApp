@@ -53,7 +53,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* NEW: User top menu */}
+            {/* User top menu */}
             <nav className="flex flex-wrap items-center gap-2">
               <Link href="/needs">
                 <Button variant="outline" size="sm">Browse Needs</Button>
@@ -82,23 +82,13 @@ export default function HomePage() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">
-              Welcome to AtriumHub
-            </h2>
-            <p className="text-gray-600">
-              Your needs-sharing platform. What would you like to do?
-            </p>
-          </div>
-
-          {/* Primary CTA */}
-          <Link href="/needs/new">
-            <Button>
-              <PlusIcon className="h-5 w-5 mr-2" />
-              Create a Need
-            </Button>
-          </Link>
+        <div className="mb-8">
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">
+            Welcome to AtriumHub
+          </h2>
+          <p className="text-gray-600">
+            Your needs-sharing platform. What would you like to do?
+          </p>
         </div>
 
         {/* Quick Actions */}
