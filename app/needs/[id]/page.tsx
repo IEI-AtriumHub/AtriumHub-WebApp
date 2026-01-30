@@ -87,7 +87,7 @@ function getNeedTypeLabel(needType: string) {
 }
 
 export default function NeedDetailsPage() {
-  const { user, loading: authLoading, isAdmin } = useAuth();
+  const { user, loading: authLoading, isAdmin, isImpersonating, organization } = useAuth();
   const [need, setNeed] = useState<Need | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
@@ -134,6 +134,14 @@ export default function NeedDetailsPage() {
           throw error;
         }
 
+        // ✅ Impersonation guard (UI-only):
+        // While impersonating, hide needs that do not belong to the impersonated user's organization.
+        // This makes impersonation behave like a real user session.
+        if (isImpersonating && organization?.id && data?.organization_id && data.organization_id !== organization.id) {
+          setNeed(null);
+          return;
+        }
+
         setNeed(data);
       } catch (error) {
         console.error('Error fetching need:', error);
@@ -147,7 +155,7 @@ export default function NeedDetailsPage() {
     if (!authLoading && user && needId) {
       fetchNeed();
     }
-  }, [authLoading, user, needId, supabase]);
+  }, [authLoading, user, needId, supabase, isImpersonating, organization?.id]);
 
   const handleClaim = async () => {
     if (!user || !need) return;
@@ -297,7 +305,6 @@ export default function NeedDetailsPage() {
   const canComplete = need.status === 'CLAIMED_IN_PROGRESS' && (isClaimedByMe || isOwner || isAdmin);
   const canApprove = need.status === 'PENDING_APPROVAL' && isAdmin;
 
-  // Build action buttons
   const actionButtons = (
     <div className="flex gap-2">
       {canApprove && (
@@ -456,30 +463,6 @@ export default function NeedDetailsPage() {
                 </div>
               )}
             </div>
-            {need.work_skills_required && need.work_skills_required.length > 0 && (
-              <div className="mt-4">
-                <p className="text-sm text-gray-500 mb-2">Skills Required</p>
-                <div className="flex flex-wrap gap-2">
-                  {need.work_skills_required.map((skill, i) => (
-                    <span key={i} className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm">
-                      {skill}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {need.work_tools_needed && need.work_tools_needed.length > 0 && (
-              <div className="mt-4">
-                <p className="text-sm text-gray-500 mb-2">Tools/Materials Needed</p>
-                <div className="flex flex-wrap gap-2">
-                  {need.work_tools_needed.map((tool, i) => (
-                    <span key={i} className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm">
-                      {tool}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -517,64 +500,6 @@ export default function NeedDetailsPage() {
                 <p className="text-gray-700">{need.financial_purpose}</p>
               </div>
             )}
-          </div>
-        )}
-
-        {/* Requester Info */}
-        <div className="p-6 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Requested By</h2>
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-              <UserIcon className="h-5 w-5 text-blue-600" />
-            </div>
-            <div>
-              <p className="font-medium text-gray-900">{need.users?.full_name || 'Unknown'}</p>
-              <p className="text-sm text-gray-500">{need.users?.email}</p>
-            </div>
-          </div>
-          <p className="text-sm text-gray-400 mt-3">
-            Submitted: {need.submitted_at ? new Date(need.submitted_at).toLocaleString() : 'Not submitted'}
-          </p>
-        </div>
-
-        {/* Progress Timeline */}
-        {(need.approved_at || need.rejected_at || need.claimed_at || need.status === 'COMPLETED') && (
-          <div className="p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Progress</h2>
-            <div className="space-y-3">
-              {need.approved_at && (
-                <div className="flex items-center gap-3 text-green-600">
-                  <CheckCircleIcon className="h-5 w-5" />
-                  <span>Approved on {new Date(need.approved_at).toLocaleString()}</span>
-                  {need.approved_by_user && <span className="text-gray-500">by {need.approved_by_user.full_name}</span>}
-                </div>
-              )}
-              {need.rejected_at && (
-                <div>
-                  <div className="flex items-center gap-3 text-red-600">
-                    <XCircleIcon className="h-5 w-5" />
-                    <span>Rejected on {new Date(need.rejected_at).toLocaleString()}</span>
-                  </div>
-                  {need.rejection_reason && (
-                    <p className="ml-8 text-sm text-gray-500 mt-1">Reason: {need.rejection_reason}</p>
-                  )}
-                </div>
-              )}
-              {need.claimed_at && need.claimed_by_user && (
-                <div className="flex items-center gap-3 text-blue-600">
-                  <HandRaisedIcon className="h-5 w-5" />
-                  <span>
-                    Claimed by {need.claimed_by_user.full_name} on {new Date(need.claimed_at).toLocaleString()}
-                  </span>
-                </div>
-              )}
-              {need.status === 'COMPLETED' && (
-                <div className="flex items-center gap-3 text-purple-600">
-                  <CheckCircleIcon className="h-5 w-5" />
-                  <span>Completed!</span>
-                </div>
-              )}
-            </div>
           </div>
         )}
       </div>
