@@ -45,35 +45,57 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function logSupabaseError(context: string, error: any) {
+  // Supabase/PostgREST errors are plain objects; sometimes console prints {} unless we serialize key fields.
+  const safe = {
+    context,
+    message: error?.message,
+    details: error?.details,
+    hint: error?.hint,
+    code: error?.code,
+    status: error?.status,
+    name: error?.name,
+    // last resort:
+    raw: error,
+  };
+  console.error('Supabase Error:', safe);
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [loading, setLoading] = useState(true);
-  
+
   // Impersonation state
   const [isImpersonating, setIsImpersonating] = useState(false);
   const [impersonatedUser, setImpersonatedUser] = useState<User | null>(null);
   const [originalUser, setOriginalUser] = useState<User | null>(null);
-  
+
   const supabase = createClientComponentClient();
 
   const fetchUserData = async (supaUser: SupabaseUser) => {
     try {
-      // Fetch user profile
+      // Fetch user profile (self)
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('*')
         .eq('id', supaUser.id)
         .single();
 
-      if (userError) throw userError;
-      
+      if (userError) {
+        logSupabaseError('fetchUserData -> users self', userError);
+        throw userError;
+      }
+
       // Check for active impersonation
-      const impersonationData = localStorage.getItem(IMPERSONATION_KEY);
+      // (guard: localStorage only exists in browser)
+      const impersonationData =
+        typeof window !== 'undefined' ? localStorage.getItem(IMPERSONATION_KEY) : null;
+
       if (impersonationData && userData) {
         const impersonation: ImpersonationData = JSON.parse(impersonationData);
-        
+
         // Verify the original user matches current auth user
         if (impersonation.originalUserId === supaUser.id) {
           // Fetch impersonated user data
@@ -82,30 +104,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .select('*')
             .eq('id', impersonation.impersonatedUserId)
             .single();
-          
+
+          if (impersonatedError) {
+            // With RLS enabled, this will fail unless users RLS allows SUPER_ADMIN to read target user.
+            logSupabaseError('fetchUserData -> users impersonated', impersonatedError);
+          }
+
           if (!impersonatedError && impersonatedData) {
             setOriginalUser(userData);
             setImpersonatedUser(impersonatedData);
             setUser(impersonatedData); // Use impersonated user as current user
             setIsImpersonating(true);
-            
+
             // Fetch impersonated user's organization
             if (impersonatedData.organization_id) {
-              const { data: orgData } = await supabase
+              const { data: orgData, error: orgError } = await supabase
                 .from('organizations')
                 .select('*')
                 .eq('id', impersonatedData.organization_id)
                 .single();
+
+              if (orgError) {
+                logSupabaseError('fetchUserData -> organizations impersonated org', orgError);
+              }
+
               setOrganization(orgData || null);
             }
             return;
           }
         }
-        
+
         // Invalid impersonation data, clear it
         localStorage.removeItem(IMPERSONATION_KEY);
       }
-      
+
       // Normal flow (no impersonation)
       setUser(userData);
       setOriginalUser(null);
@@ -120,16 +152,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .eq('id', userData.organization_id)
           .single();
 
-        if (orgError) throw orgError;
+        if (orgError) {
+          logSupabaseError('fetchUserData -> organizations self org', orgError);
+          throw orgError;
+        }
+
         setOrganization(orgData);
+      } else {
+        setOrganization(null);
       }
     } catch (error) {
-      console.error('Error fetching user data:', error);
+      // This is the line you were seeing as "{}" before.
+      // Now it should include message/code/status/details in the log above.
+      console.error('Error fetching user data (caught):', error);
     }
   };
 
   const refreshUser = async () => {
-    const { data: { user: supaUser } } = await supabase.auth.getUser();
+    const {
+      data: { user: supaUser },
+    } = await supabase.auth.getUser();
     if (supaUser) {
       await fetchUserData(supaUser);
     }
@@ -194,6 +236,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .single();
 
     if (error || !targetUser) {
+      if (error) logSupabaseError('startImpersonation -> users target', error);
       throw new Error('User not found');
     }
 
@@ -222,11 +265,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Fetch target user's organization
     if (targetUser.organization_id) {
-      const { data: orgData } = await supabase
+      const { data: orgData, error: orgError } = await supabase
         .from('organizations')
         .select('*')
         .eq('id', targetUser.organization_id)
         .single();
+
+      if (orgError) {
+        logSupabaseError('startImpersonation -> organizations target org', orgError);
+      }
+
       setOrganization(orgData || null);
     }
 
@@ -236,14 +284,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const stopImpersonation = () => {
     localStorage.removeItem(IMPERSONATION_KEY);
-    
+
     // Restore original user
     if (originalUser) {
       setUser(originalUser);
       setIsImpersonating(false);
       setImpersonatedUser(null);
       setOriginalUser(null);
-      
+
       // Refetch original user's organization
       if (originalUser.organization_id) {
         supabase
@@ -251,7 +299,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .select('*')
           .eq('id', originalUser.organization_id)
           .single()
-          .then(({ data }) => setOrganization(data || null));
+          .then(({ data, error }) => {
+            if (error) logSupabaseError('stopImpersonation -> organizations original org', error);
+            setOrganization(data || null);
+          });
+      } else {
+        setOrganization(null);
       }
     }
 
@@ -264,12 +317,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isSuperAdmin = actualUser?.role === 'SUPER_ADMIN';
   const isAdmin = actualUser?.role === 'ORG_ADMIN' || isSuperAdmin;
   const isGroupLeader = actualUser?.role === 'GROUP_LEADER';
-  
+
   // Display checks - use displayed user's role (for UI rendering)
   const displayIsSuperAdmin = user?.role === 'SUPER_ADMIN';
   const displayIsAdmin = user?.role === 'ORG_ADMIN' || displayIsSuperAdmin;
   const displayIsGroupLeader = user?.role === 'GROUP_LEADER';
-  
+
   // These are based on the displayed user (impersonated or real)
   const isPending = user?.status === 'PENDING';
   const isApproved = user?.status === 'APPROVED';
@@ -320,48 +373,48 @@ export function useAuth() {
 
 export function useRequireAuth() {
   const { user, loading } = useAuth();
-  
+
   useEffect(() => {
     if (!loading && !user) {
       window.location.href = '/auth/login';
     }
   }, [user, loading]);
-  
+
   return { user, loading };
 }
 
 export function useRequireApproval() {
   const { user, loading, isApproved } = useAuth();
-  
+
   useEffect(() => {
     if (!loading && user && !isApproved) {
       window.location.href = '/pending-approval';
     }
   }, [user, loading, isApproved]);
-  
+
   return { user, loading };
 }
 
 export function useRequireAdmin() {
   const { user, loading, isAdmin } = useAuth();
-  
+
   useEffect(() => {
     if (!loading && (!user || !isAdmin)) {
       window.location.href = '/';
     }
   }, [user, loading, isAdmin]);
-  
+
   return { user, loading };
 }
 
 export function useRequireRole(allowedRoles: string[]) {
   const { user, loading } = useAuth();
-  
+
   useEffect(() => {
     if (!loading && user && !allowedRoles.includes(user.role)) {
       window.location.href = '/';
     }
   }, [user, loading, allowedRoles]);
-  
+
   return { user, loading };
 }
