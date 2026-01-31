@@ -59,6 +59,10 @@ export default function HomePage() {
                 <Button variant="outline" size="sm">Browse Needs</Button>
               </Link>
 
+              <Link href="/needs/in-progress">
+                <Button variant="outline" size="sm">In Progress</Button>
+              </Link>
+
               <Link href="/my-needs">
                 <Button variant="outline" size="sm">My Needs</Button>
               </Link>
@@ -101,6 +105,14 @@ export default function HomePage() {
             </div>
           </Link>
 
+          <Link href="/needs/in-progress" className="block">
+            <div className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
+              <ClipboardDocumentListIcon className="h-8 w-8 text-indigo-600 mb-3" />
+              <h3 className="font-semibold text-gray-900 mb-1">In Progress</h3>
+              <p className="text-sm text-gray-600">See needs currently being worked on</p>
+            </div>
+          </Link>
+
           <Link href="/my-needs" className="block">
             <div className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
               <PlusIcon className="h-8 w-8 text-green-600 mb-3" />
@@ -109,7 +121,7 @@ export default function HomePage() {
             </div>
           </Link>
 
-          {displayIsAdmin && (
+          {displayIsAdmin ? (
             <Link href="/admin" className="block">
               <div className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
                 <UserGroupIcon className="h-8 w-8 text-purple-600 mb-3" />
@@ -117,16 +129,29 @@ export default function HomePage() {
                 <p className="text-sm text-gray-600">Manage users and approvals</p>
               </div>
             </Link>
+          ) : (
+            <Link href="/profile" className="block">
+              <div className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
+                <Cog6ToothIcon className="h-8 w-8 text-gray-600 mb-3" />
+                <h3 className="font-semibold text-gray-900 mb-1">Settings</h3>
+                <p className="text-sm text-gray-600">Update your profile</p>
+              </div>
+            </Link>
           )}
-
-          <Link href="/profile" className="block">
-            <div className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
-              <Cog6ToothIcon className="h-8 w-8 text-gray-600 mb-3" />
-              <h3 className="font-semibold text-gray-900 mb-1">Settings</h3>
-              <p className="text-sm text-gray-600">Update your profile</p>
-            </div>
-          </Link>
         </div>
+
+        {/* If admin card is shown, still show settings */}
+        {displayIsAdmin && (
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <Link href="/profile" className="block">
+              <div className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
+                <Cog6ToothIcon className="h-8 w-8 text-gray-600 mb-3" />
+                <h3 className="font-semibold text-gray-900 mb-1">Settings</h3>
+                <p className="text-sm text-gray-600">Update your profile</p>
+              </div>
+            </Link>
+          </div>
+        )}
       </main>
     </div>
   );
