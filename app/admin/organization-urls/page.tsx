@@ -18,6 +18,19 @@ import {
   TagIcon,
 } from '@heroicons/react/24/outline';
 
+type NeedUser = {
+  full_name: string;
+  email: string;
+};
+
+type NeedOrg = {
+  display_name: string;
+};
+
+type NeedGroup = {
+  name: string;
+};
+
 interface PendingNeed {
   id: string;
   title: string;
@@ -25,16 +38,11 @@ interface PendingNeed {
   need_type: string;
   urgency: string;
   submitted_at: string;
-  users: {
-    full_name: string;
-    email: string;
-  } | null;
-  organizations: {
-    display_name: string;
-  } | null;
-  groups: {
-    name: string;
-  } | null;
+
+  // After normalization we treat these as single objects (or null)
+  users: NeedUser | null;
+  organizations: NeedOrg | null;
+  groups: NeedGroup | null;
 }
 
 interface PendingUser {
@@ -58,7 +66,12 @@ export default function AdminPage() {
   const { user, loading: authLoading, isAdmin, isSuperAdmin, signOut } = useAuth();
   const [pendingNeeds, setPendingNeeds] = useState<PendingNeed[]>([]);
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
-  const [stats, setStats] = useState<Stats>({ pendingNeeds: 0, pendingUsers: 0, activeNeeds: 0, completedNeeds: 0 });
+  const [stats, setStats] = useState<Stats>({
+    pendingNeeds: 0,
+    pendingUsers: 0,
+    activeNeeds: 0,
+    completedNeeds: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const supabase = createClientComponentClient();
@@ -71,11 +84,12 @@ export default function AdminPage() {
 
     const fetchData = async () => {
       try {
-        const orgId = user?.organization_id;
+        const orgId = (user as any)?.organization_id;
 
         let needsQuery = supabase
           .from('needs')
-          .select(`
+          .select(
+            `
             id,
             title,
             description,
@@ -85,7 +99,8 @@ export default function AdminPage() {
             users:requester_user_id (full_name, email),
             organizations (display_name),
             groups (name)
-          `)
+          `
+          )
           .eq('status', 'PENDING_APPROVAL')
           .order('submitted_at', { ascending: true });
 
@@ -96,11 +111,19 @@ export default function AdminPage() {
         const { data: needsData, error: needsError } = await needsQuery;
         if (needsError) throw needsError;
 
-        // Normalize relationship fields to single objects (or null) to satisfy TS + UI expectations
-        const normalizedNeeds: PendingNeed[] = (needsData || []).map((n: any) => ({
-          ...n,
+        // Supabase relationship fields can come back as arrays depending on relationship direction.
+        // Normalize to single objects (or null) so UI and TS are stable.
+        const normalizedNeeds: PendingNeed[] = (needsData ?? []).map((n: any) => ({
+          id: n.id,
+          title: n.title,
+          description: n.description,
+          need_type: n.need_type,
+          urgency: n.urgency,
+          submitted_at: n.submitted_at,
           users: Array.isArray(n.users) ? (n.users[0] ?? null) : (n.users ?? null),
-          organizations: Array.isArray(n.organizations) ? (n.organizations[0] ?? null) : (n.organizations ?? null),
+          organizations: Array.isArray(n.organizations)
+            ? (n.organizations[0] ?? null)
+            : (n.organizations ?? null),
           groups: Array.isArray(n.groups) ? (n.groups[0] ?? null) : (n.groups ?? null),
         }));
 
@@ -108,13 +131,15 @@ export default function AdminPage() {
 
         let usersQuery = supabase
           .from('users')
-          .select(`
+          .select(
+            `
             id,
             email,
             full_name,
             created_at,
             organizations (display_name)
-          `)
+          `
+          )
           .eq('status', 'PENDING')
           .order('created_at', { ascending: true });
 
@@ -126,7 +151,7 @@ export default function AdminPage() {
         if (usersError) throw usersError;
 
         // Normalize organizations (Supabase may return as array)
-        const normalizedUsers: PendingUser[] = (usersData || []).map((u: any) => ({
+        const normalizedUsers: PendingUser[] = (usersData ?? []).map((u: any) => ({
           ...u,
           organizations: Array.isArray(u.organizations) ? (u.organizations[0] ?? null) : (u.organizations ?? null),
         }));
@@ -201,8 +226,8 @@ export default function AdminPage() {
 
       if (error) throw error;
 
-      setPendingNeeds(pendingNeeds.filter(n => n.id !== needId));
-      setStats(prev => ({ ...prev, pendingNeeds: prev.pendingNeeds - 1, activeNeeds: prev.activeNeeds + 1 }));
+      setPendingNeeds(pendingNeeds.filter((n) => n.id !== needId));
+      setStats((prev) => ({ ...prev, pendingNeeds: prev.pendingNeeds - 1, activeNeeds: prev.activeNeeds + 1 }));
       toast.success('Need approved successfully!');
     } catch (error: any) {
       toast.error(error.message || 'Failed to approve need');
@@ -228,8 +253,8 @@ export default function AdminPage() {
 
       if (error) throw error;
 
-      setPendingNeeds(pendingNeeds.filter(n => n.id !== needId));
-      setStats(prev => ({ ...prev, pendingNeeds: prev.pendingNeeds - 1 }));
+      setPendingNeeds(pendingNeeds.filter((n) => n.id !== needId));
+      setStats((prev) => ({ ...prev, pendingNeeds: prev.pendingNeeds - 1 }));
       toast.success('Need rejected');
     } catch (error: any) {
       toast.error(error.message || 'Failed to reject need');
@@ -252,8 +277,8 @@ export default function AdminPage() {
 
       if (error) throw error;
 
-      setPendingUsers(pendingUsers.filter(u => u.id !== userId));
-      setStats(prev => ({ ...prev, pendingUsers: prev.pendingUsers - 1 }));
+      setPendingUsers(pendingUsers.filter((u) => u.id !== userId));
+      setStats((prev) => ({ ...prev, pendingUsers: prev.pendingUsers - 1 }));
       toast.success('User approved successfully!');
     } catch (error: any) {
       toast.error(error.message || 'Failed to approve user');
@@ -281,9 +306,13 @@ export default function AdminPage() {
             <div className="flex items-center gap-4">
               <span className="text-gray-600">Welcome, {user?.full_name}</span>
               <Link href="/profile">
-                <Button variant="outline" size="sm">Profile</Button>
+                <Button variant="outline" size="sm">
+                  Profile
+                </Button>
               </Link>
-              <Button variant="outline" size="sm" onClick={signOut}>Sign Out</Button>
+              <Button variant="outline" size="sm" onClick={signOut}>
+                Sign Out
+              </Button>
             </div>
           </div>
         </div>
@@ -292,9 +321,7 @@ export default function AdminPage() {
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
-          <p className="text-sm text-gray-500">
-            {isSuperAdmin ? 'Super Admin - All Organizations' : 'Manage your organization'}
-          </p>
+          <p className="text-sm text-gray-500">{isSuperAdmin ? 'Super Admin - All Organizations' : 'Manage your organization'}</p>
         </div>
       </header>
 
@@ -355,7 +382,10 @@ export default function AdminPage() {
             </Link>
           )}
           {isSuperAdmin && (
-            <Link href="/admin/organization-categories" className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
+            <Link
+              href="/admin/organization-categories"
+              className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow"
+            >
               <TagIcon className="h-8 w-8 text-amber-600 mb-2" />
               <h3 className="font-semibold text-gray-900">Category Settings</h3>
               <p className="text-sm text-gray-500">Enable/disable categories per org</p>
@@ -364,9 +394,7 @@ export default function AdminPage() {
           <Link href="/admin/users" className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
             <UsersIcon className="h-8 w-8 text-indigo-600 mb-2" />
             <h3 className="font-semibold text-gray-900">Manage Users</h3>
-            <p className="text-sm text-gray-500">
-              {isSuperAdmin ? 'Edit roles & impersonate users' : 'Edit user roles and status'}
-            </p>
+            <p className="text-sm text-gray-500">{isSuperAdmin ? 'Edit roles & impersonate users' : 'Edit user roles and status'}</p>
           </Link>
           <Link href="/admin/groups" className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
             <UserGroupIcon className="h-8 w-8 text-green-600 mb-2" />
@@ -382,14 +410,10 @@ export default function AdminPage() {
 
         <div className="bg-white rounded-lg shadow mb-8">
           <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Pending Needs Approval ({pendingNeeds.length})
-            </h2>
+            <h2 className="text-lg font-semibold text-gray-900">Pending Needs Approval ({pendingNeeds.length})</h2>
           </div>
           {pendingNeeds.length === 0 ? (
-            <div className="p-6 text-center text-gray-500">
-              No needs pending approval
-            </div>
+            <div className="p-6 text-center text-gray-500">No needs pending approval</div>
           ) : (
             <div className="divide-y divide-gray-200">
               {pendingNeeds.map((need) => (
@@ -398,25 +422,27 @@ export default function AdminPage() {
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="font-semibold text-gray-900">{need.title}</h3>
-                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
-                          {need.need_type}
-                        </span>
-                        <span className={`text-xs px-2 py-1 rounded ${
-                          need.urgency === 'CRITICAL' ? 'bg-red-100 text-red-700' :
-                          need.urgency === 'HIGH' ? 'bg-orange-100 text-orange-700' :
-                          need.urgency === 'MEDIUM' ? 'bg-blue-100 text-blue-700' :
-                          'bg-gray-100 text-gray-600'
-                        }`}>
+                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">{need.need_type}</span>
+                        <span
+                          className={`text-xs px-2 py-1 rounded ${
+                            need.urgency === 'CRITICAL'
+                              ? 'bg-red-100 text-red-700'
+                              : need.urgency === 'HIGH'
+                              ? 'bg-orange-100 text-orange-700'
+                              : need.urgency === 'MEDIUM'
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
                           {need.urgency}
                         </span>
                       </div>
                       <p className="text-sm text-gray-500 mb-2">
-                        Requested by {need.users?.full_name || 'Unknown'} • {need.organizations?.display_name} • {need.groups?.name || 'No group'}
+                        Requested by {need.users?.full_name || 'Unknown'} • {need.organizations?.display_name || 'No organization'} •{' '}
+                        {need.groups?.name || 'No group'}
                       </p>
                       <p className="text-gray-600 line-clamp-2">{need.description}</p>
-                      <p className="text-xs text-gray-400 mt-2">
-                        Submitted: {new Date(need.submitted_at).toLocaleString()}
-                      </p>
+                      <p className="text-xs text-gray-400 mt-2">Submitted: {new Date(need.submitted_at).toLocaleString()}</p>
                     </div>
                     <div className="flex gap-2 ml-4">
                       <Button
@@ -448,14 +474,10 @@ export default function AdminPage() {
 
         <div className="bg-white rounded-lg shadow">
           <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Pending User Approvals ({pendingUsers.length})
-            </h2>
+            <h2 className="text-lg font-semibold text-gray-900">Pending User Approvals ({pendingUsers.length})</h2>
           </div>
           {pendingUsers.length === 0 ? (
-            <div className="p-6 text-center text-gray-500">
-              No users pending approval
-            </div>
+            <div className="p-6 text-center text-gray-500">No users pending approval</div>
           ) : (
             <div className="divide-y divide-gray-200">
               {pendingUsers.map((pendingUser) => (
@@ -464,7 +486,8 @@ export default function AdminPage() {
                     <h3 className="font-semibold text-gray-900">{pendingUser.full_name || 'No name'}</h3>
                     <p className="text-sm text-gray-500">{pendingUser.email}</p>
                     <p className="text-xs text-gray-400">
-                      {pendingUser.organizations?.display_name || 'No organization'} • Registered: {new Date(pendingUser.created_at).toLocaleDateString()}
+                      {pendingUser.organizations?.display_name || 'No organization'} • Registered:{' '}
+                      {new Date(pendingUser.created_at).toLocaleDateString()}
                     </p>
                   </div>
                   <Button
