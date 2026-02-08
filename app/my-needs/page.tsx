@@ -17,12 +17,12 @@ interface Need {
   urgency: string;
   created_at: string;
   submitted_at: string;
-  organizations?: {
+  organizations: {
     display_name: string;
-  };
-  groups?: {
+  } | null;
+  groups: {
     name: string;
-  };
+  } | null;
 }
 
 const statusColors: Record<string, string> = {
@@ -64,7 +64,8 @@ export default function MyNeedsPage() {
       try {
         let query = supabase
           .from('needs')
-          .select(`
+          .select(
+            `
             id,
             title,
             description,
@@ -75,7 +76,8 @@ export default function MyNeedsPage() {
             submitted_at,
             organizations (display_name),
             groups (name)
-          `)
+          `
+          )
           .eq('requester_user_id', user.id)
           .order('created_at', { ascending: false });
 
@@ -84,9 +86,15 @@ export default function MyNeedsPage() {
         }
 
         const { data, error } = await query;
-
         if (error) throw error;
-        setNeeds(data || []);
+
+        const normalizedNeeds: Need[] = (data || []).map((n: any) => ({
+          ...n,
+          organizations: Array.isArray(n.organizations) ? (n.organizations[0] ?? null) : (n.organizations ?? null),
+          groups: Array.isArray(n.groups) ? (n.groups[0] ?? null) : (n.groups ?? null),
+        }));
+
+        setNeeds(normalizedNeeds);
       } catch (error) {
         console.error('Error fetching needs:', error);
       } finally {
@@ -135,9 +143,7 @@ export default function MyNeedsPage() {
             key={tab.value}
             onClick={() => setFilter(tab.value)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              filter === tab.value
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-100 shadow-sm'
+              filter === tab.value ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100 shadow-sm'
             }`}
           >
             {tab.label}
@@ -169,22 +175,28 @@ export default function MyNeedsPage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <h3 className="text-lg font-semibold text-gray-900">{need.title}</h3>
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColors[need.status] || 'bg-gray-100 text-gray-800'}`}>
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          statusColors[need.status] || 'bg-gray-100 text-gray-800'
+                        }`}
+                      >
                         {statusLabels[need.status] || need.status}
                       </span>
                     </div>
                     <p className="text-sm text-gray-500 mb-2">
-                      {need.organizations?.display_name} • {need.groups?.name || 'No group'}
+                      {need.organizations?.display_name || 'N/A'} • {need.groups?.name || 'No group'}
                     </p>
                     <p className="text-gray-600 line-clamp-2">{need.description}</p>
                   </div>
                   <div className="flex flex-col items-end gap-2 ml-4">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${urgencyColors[need.urgency] || 'bg-gray-100 text-gray-600'}`}>
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        urgencyColors[need.urgency] || 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
                       {need.urgency}
                     </span>
-                    <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">
-                      {need.need_type}
-                    </span>
+                    <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">{need.need_type}</span>
                   </div>
                 </div>
                 <div className="mt-4 flex justify-between items-center text-sm">

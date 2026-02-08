@@ -36,7 +36,7 @@ interface UserWithOrg {
   organizations?: {
     display_name: string;
     slug: string;
-  };
+  } | null;
   groups?: {
     id: string;
     name: string;
@@ -127,19 +127,25 @@ export default function UsersPage() {
 
         const { data: groupsData, error: groupsError } = await groupsQuery;
         if (groupsError) throw groupsError;
-        setGroups(groupsData || []);
 
-        // Manually attach group info to users
-        const usersWithGroups = (usersData || []).map((u) => {
-          const userGroup = groupsData?.find((g) => g.id === u.group_id);
+        const safeGroups: Group[] = (groupsData || []) as Group[];
+        setGroups(safeGroups);
+
+        // Manually attach group info to users, then normalize organizations (array -> single object)
+        const usersWithGroups = (usersData || []).map((u: any) => {
+          const userGroup = safeGroups.find((g) => g.id === u.group_id);
           return {
             ...u,
             groups: userGroup ? { id: userGroup.id, name: userGroup.name } : null,
           };
         });
 
-        setUsers(usersWithGroups);
+        const normalizedUsersWithGroups: UserWithOrg[] = (usersWithGroups || []).map((u: any) => ({
+          ...u,
+          organizations: Array.isArray(u.organizations) ? (u.organizations[0] ?? null) : (u.organizations ?? null),
+        }));
 
+        setUsers(normalizedUsersWithGroups);
       } catch (error) {
         console.error('Error fetching data:', error);
         toast.error('Failed to load users');
@@ -154,9 +160,7 @@ export default function UsersPage() {
   }, [authLoading, user, isAdmin, isSuperAdmin, supabase]);
 
   // Get groups for the selected organization (for filtering)
-  const filteredGroups = groups.filter(
-    (g) => selectedOrgId === 'ALL' || g.organization_id === selectedOrgId
-  );
+  const filteredGroups = groups.filter((g) => selectedOrgId === 'ALL' || g.organization_id === selectedOrgId);
 
   // Get groups for the user being edited
   const getGroupsForUser = (orgId: string) => {
@@ -191,26 +195,25 @@ export default function UsersPage() {
         updates.approved_at = new Date().toISOString();
       }
 
-      const { error } = await supabase
-        .from('users')
-        .update(updates)
-        .eq('id', editingUser.id);
+      const { error } = await supabase.from('users').update(updates).eq('id', editingUser.id);
 
       if (error) throw error;
 
       // Update local state
       const updatedGroup = groups.find((g) => g.id === editGroupId);
-      setUsers(users.map((u) =>
-        u.id === editingUser.id
-          ? {
-              ...u,
-              role: editRole,
-              status: editStatus,
-              group_id: editGroupId || null,
-              groups: updatedGroup ? { id: updatedGroup.id, name: updatedGroup.name } : null,
-            }
-          : u
-      ));
+      setUsers(
+        users.map((u) =>
+          u.id === editingUser.id
+            ? {
+                ...u,
+                role: editRole,
+                status: editStatus,
+                group_id: editGroupId || null,
+                groups: updatedGroup ? { id: updatedGroup.id, name: updatedGroup.name } : null,
+              }
+            : u
+        )
+      );
 
       setEditingUser(null);
       toast.success('User updated successfully!');
@@ -289,7 +292,7 @@ export default function UsersPage() {
                 </p>
               </div>
             </div>
-            
+
             {/* Organization Selector - SuperAdmin only */}
             {isSuperAdmin && (
               <OrgSelector
@@ -401,9 +404,7 @@ export default function UsersPage() {
           <div className="text-center py-12 bg-white rounded-lg shadow">
             <UserCircleIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-500 text-lg">No users found.</p>
-            {hasActiveFilters && (
-              <p className="text-gray-400 mt-2">Try adjusting your filters.</p>
-            )}
+            {hasActiveFilters && <p className="text-gray-400 mt-2">Try adjusting your filters.</p>}
           </div>
         ) : (
           <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -446,21 +447,15 @@ export default function UsersPage() {
                           </span>
                         </div>
                         <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">
-                            {u.full_name || 'No name'}
-                          </div>
+                          <div className="text-sm font-medium text-gray-900">{u.full_name || 'No name'}</div>
                           <div className="text-sm text-gray-500">{u.email}</div>
                         </div>
                       </div>
                     </td>
                     {isSuperAdmin && selectedOrgId === 'ALL' && (
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {u.organizations?.display_name || 'N/A'}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {u.organizations?.slug || ''}
-                        </div>
+                        <div className="text-sm text-gray-900">{u.organizations?.display_name || 'N/A'}</div>
+                        <div className="text-xs text-gray-500">{u.organizations?.slug || ''}</div>
                       </td>
                     )}
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -469,12 +464,16 @@ export default function UsersPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ROLE_COLORS[u.role]}`}>
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ROLE_COLORS[u.role]}`}
+                      >
                         {ROLE_LABELS[u.role]}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[u.status]}`}>
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[u.status]}`}
+                      >
                         {u.status}
                       </span>
                     </td>
@@ -483,12 +482,7 @@ export default function UsersPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openEditModal(u)}
-                          disabled={u.id === user?.id}
-                        >
+                        <Button variant="outline" size="sm" onClick={() => openEditModal(u)} disabled={u.id === user?.id}>
                           <ShieldCheckIcon className="h-4 w-4 mr-1" />
                           Edit
                         </Button>
@@ -519,10 +513,7 @@ export default function UsersPage() {
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold text-gray-900">Edit User</h2>
-              <button
-                onClick={() => setEditingUser(null)}
-                className="text-gray-400 hover:text-gray-600"
-              >
+              <button onClick={() => setEditingUser(null)} className="text-gray-400 hover:text-gray-600">
                 <XMarkIcon className="h-6 w-6" />
               </button>
             </div>
@@ -533,9 +524,7 @@ export default function UsersPage() {
               </p>
               <p className="text-sm text-gray-500">{editingUser.email}</p>
               {isSuperAdmin && editingUser.organizations && (
-                <p className="text-sm text-gray-500">
-                  Organization: {editingUser.organizations.display_name}
-                </p>
+                <p className="text-sm text-gray-500">Organization: {editingUser.organizations.display_name}</p>
               )}
             </div>
 
@@ -587,18 +576,10 @@ export default function UsersPage() {
             </div>
 
             <div className="mt-6 flex gap-3">
-              <Button
-                onClick={handleUpdateUser}
-                loading={processingId === editingUser.id}
-                className="flex-1"
-              >
+              <Button onClick={handleUpdateUser} loading={processingId === editingUser.id} className="flex-1">
                 Save Changes
               </Button>
-              <Button
-                variant="outline"
-                onClick={() => setEditingUser(null)}
-                className="flex-1"
-              >
+              <Button variant="outline" onClick={() => setEditingUser(null)} className="flex-1">
                 Cancel
               </Button>
             </div>

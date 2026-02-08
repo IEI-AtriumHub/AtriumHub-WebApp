@@ -28,13 +28,13 @@ interface PendingNeed {
   users: {
     full_name: string;
     email: string;
-  };
+  } | null;
   organizations: {
     display_name: string;
-  };
+  } | null;
   groups: {
     name: string;
-  };
+  } | null;
 }
 
 interface PendingUser {
@@ -44,7 +44,7 @@ interface PendingUser {
   created_at: string;
   organizations?: {
     display_name: string;
-  };
+  } | null;
 }
 
 interface Stats {
@@ -95,7 +95,16 @@ export default function AdminPage() {
 
         const { data: needsData, error: needsError } = await needsQuery;
         if (needsError) throw needsError;
-        setPendingNeeds(needsData || []);
+
+        // Normalize relationship fields to single objects (or null) to satisfy TS + UI expectations
+        const normalizedNeeds: PendingNeed[] = (needsData || []).map((n: any) => ({
+          ...n,
+          users: Array.isArray(n.users) ? (n.users[0] ?? null) : (n.users ?? null),
+          organizations: Array.isArray(n.organizations) ? (n.organizations[0] ?? null) : (n.organizations ?? null),
+          groups: Array.isArray(n.groups) ? (n.groups[0] ?? null) : (n.groups ?? null),
+        }));
+
+        setPendingNeeds(normalizedNeeds);
 
         let usersQuery = supabase
           .from('users')
@@ -115,7 +124,14 @@ export default function AdminPage() {
 
         const { data: usersData, error: usersError } = await usersQuery;
         if (usersError) throw usersError;
-        setPendingUsers(usersData || []);
+
+        // Normalize organizations (Supabase may return as array)
+        const normalizedUsers: PendingUser[] = (usersData || []).map((u: any) => ({
+          ...u,
+          organizations: Array.isArray(u.organizations) ? (u.organizations[0] ?? null) : (u.organizations ?? null),
+        }));
+
+        setPendingUsers(normalizedUsers);
 
         let pendingNeedsQuery = supabase
           .from('needs')
@@ -197,7 +213,7 @@ export default function AdminPage() {
 
   const handleRejectNeed = async (needId: string) => {
     const reason = prompt('Please provide a reason for rejection (optional):');
-    
+
     setProcessingId(needId);
     try {
       const { error } = await supabase
@@ -227,7 +243,7 @@ export default function AdminPage() {
     try {
       const { error } = await supabase
         .from('users')
-        .update({ 
+        .update({
           status: 'APPROVED',
           approved_by: user?.id,
           approved_at: new Date().toISOString(),

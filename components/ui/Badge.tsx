@@ -1,73 +1,61 @@
 // ============================================================================
-// BADGE COMPONENT
+// BADGE COMPONENTS
 // ============================================================================
 
+'use client';
+
+import React from 'react';
 import { cn } from '@/lib/utils';
-import { NeedStatus, UserStatus, STATUS_COLORS, USER_STATUS_COLORS } from '@/types';
+import { NeedStatus, UserStatus } from '@/types';
 
 interface BadgeProps {
   children: React.ReactNode;
-  variant?: 'default' | 'success' | 'warning' | 'danger' | 'info';
-  size?: 'sm' | 'md' | 'lg';
   className?: string;
 }
 
-export function Badge({ children, variant = 'default', size = 'md', className }: BadgeProps) {
-  const baseStyles = 'inline-flex items-center font-medium rounded-full';
-  
-  const variantStyles = {
-    default: 'bg-gray-100 text-gray-800',
-    success: 'bg-green-100 text-green-800',
-    warning: 'bg-yellow-100 text-yellow-800',
-    danger: 'bg-red-100 text-red-800',
-    info: 'bg-blue-100 text-blue-800',
-  };
-  
-  const sizeStyles = {
-    sm: 'px-2 py-0.5 text-xs',
-    md: 'px-2.5 py-0.5 text-sm',
-    lg: 'px-3 py-1 text-base',
-  };
-  
+export function Badge({ children, className }: BadgeProps) {
   return (
-    <span className={cn(baseStyles, variantStyles[variant], sizeStyles[size], className)}>
+    <span
+      className={cn(
+        'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
+        className
+      )}
+    >
       {children}
     </span>
   );
 }
 
-// Specialized status badges
-export function NeedStatusBadge({ status }: { status: NeedStatus }) {
-  const displayNames: Record<NeedStatus, string> = {
-    DRAFT: 'Draft',
-    PENDING_APPROVAL: 'Pending Approval',
-    APPROVED_OPEN: 'Open',
-    CLAIMED_IN_PROGRESS: 'In Progress',
-    COMPLETED: 'Completed',
-    CANCELLED: 'Cancelled',
-    REJECTED: 'Rejected',
-  };
-  
-  return (
-    <span className={cn('inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium', STATUS_COLORS[status])}>
-      {displayNames[status]}
-    </span>
-  );
+/**
+ * These are defined locally because "@/types" does NOT export STATUS_COLORS or USER_STATUS_COLORS.
+ * (Your build errors confirm that.)
+ */
+const NEED_STATUS_COLORS: Record<string, string> = {
+  DRAFT: 'bg-gray-100 text-gray-800',
+  PENDING_APPROVAL: 'bg-yellow-100 text-yellow-800',
+  APPROVED_OPEN: 'bg-green-100 text-green-800',
+  CLAIMED_IN_PROGRESS: 'bg-blue-100 text-blue-800',
+  COMPLETED: 'bg-purple-100 text-purple-800',
+  REJECTED: 'bg-red-100 text-red-800',
+  CANCELLED: 'bg-gray-100 text-gray-700',
+  ARCHIVED: 'bg-gray-100 text-gray-700',
+};
+
+const USER_STATUS_COLORS_LOCAL: Record<string, string> = {
+  PENDING: 'bg-yellow-100 text-yellow-800',
+  APPROVED: 'bg-green-100 text-green-800',
+  REJECTED: 'bg-red-100 text-red-800',
+  DISABLED: 'bg-gray-100 text-gray-800',
+};
+
+export function NeedStatusBadge({ status }: { status: NeedStatus | string }) {
+  const classes = NEED_STATUS_COLORS[status] || 'bg-gray-100 text-gray-800';
+  return <Badge className={classes}>{status}</Badge>;
 }
 
-export function UserStatusBadge({ status }: { status: UserStatus }) {
-  const displayNames: Record<UserStatus, string> = {
-    PENDING: 'Pending',
-    APPROVED: 'Approved',
-    REJECTED: 'Rejected',
-    DISABLED: 'Disabled',
-  };
-  
-  return (
-    <span className={cn('inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium', USER_STATUS_COLORS[status])}>
-      {displayNames[status]}
-    </span>
-  );
+export function UserStatusBadge({ status }: { status: UserStatus | string }) {
+  const classes = USER_STATUS_COLORS_LOCAL[status] || 'bg-gray-100 text-gray-800';
+  return <Badge className={classes}>{status}</Badge>;
 }
 
 export default Badge;

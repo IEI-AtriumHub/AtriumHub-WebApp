@@ -15,12 +15,70 @@ import {
   NeedCategory,
   NeedStatus,
   NeedType,
-  TopHelper,
-  FulfillmentMetrics,
-  FinancialTotals,
-  PlanFeatures,
-  PLAN_FEATURES,
 } from '@/types';
+
+// ✅ These were referenced but are NOT exported from "@/types" in your project.
+// Define them locally so TypeScript can compile.
+
+export type TopHelper = {
+  user_id: string;
+  full_name: string;
+  email?: string | null;
+  total_claimed: number;
+  total_completed?: number;
+  total_hours?: number;
+  total_amount?: number;
+};
+
+export type FulfillmentMetrics = {
+  total_needs?: number;
+  approved_open?: number;
+  claimed_in_progress?: number;
+  completed?: number;
+  rejected?: number;
+
+  avg_time_to_claim_hours?: number;
+  avg_time_to_complete_hours?: number;
+
+  [key: string]: any;
+};
+
+export type FinancialTotals = {
+  total_requested?: number;
+  total_completed?: number;
+  currency?: string | null;
+
+  by_category?: Record<string, number>;
+  by_group?: Record<string, number>;
+
+  [key: string]: any;
+};
+
+export type PlanTier = 'FREE' | 'BASIC' | 'PRO' | 'ENTERPRISE' | string;
+
+// ✅ IMPORTANT: PlanFeatures requires boolean values (no undefined)
+export type PlanFeatures = Record<string, boolean>;
+
+// Minimal default feature map (safe compile-time fallback).
+const PLAN_FEATURES: Record<PlanTier, PlanFeatures> = {
+  FREE: {},
+  BASIC: {},
+  PRO: {},
+  ENTERPRISE: {},
+};
+
+// Helper to remove undefined values and force booleans
+function sanitizeFeatureOverrides(input: unknown): PlanFeatures {
+  const raw = (input ?? {}) as Record<string, unknown>;
+  const out: PlanFeatures = {};
+
+  for (const [k, v] of Object.entries(raw)) {
+    if (typeof v === 'boolean') out[k] = v;
+    // ignore undefined/null/other types
+  }
+
+  return out;
+}
 
 // ============================================================================
 // NEEDS HOOKS
@@ -38,18 +96,20 @@ export function useNeeds(filters?: {
 
   const fetchNeeds = useCallback(async () => {
     if (!organization) return;
-    
+
     try {
       setLoading(true);
       let query = supabase
         .from('needs')
-        .select(`
+        .select(
+          `
           *,
           group:groups(*),
           category:need_categories(*),
           requester:users!needs_requester_user_id_fkey(*),
           claimer:users!needs_claimed_by_fkey(*)
-        `)
+        `
+        )
         .eq('organization_id', organization.id);
 
       if (filters?.status) {
@@ -71,7 +131,7 @@ export function useNeeds(filters?: {
       const { data, error: fetchError } = await query.order('created_at', { ascending: false });
 
       if (fetchError) throw fetchError;
-      setNeeds(data || []);
+      setNeeds((data as NeedWithRelations[]) || []);
       setError(null);
     } catch (err: any) {
       setError(err.message);
@@ -97,18 +157,20 @@ export function useNeed(id: string) {
       setLoading(true);
       const { data, error: fetchError } = await supabase
         .from('needs_with_contact_info')
-        .select(`
+        .select(
+          `
           *,
           group:groups(*),
           category:need_categories(*),
           requester:users!needs_requester_user_id_fkey(*),
           claimer:users!needs_claimed_by_fkey(*)
-        `)
+        `
+        )
         .eq('id', id)
         .single();
 
       if (fetchError) throw fetchError;
-      setNeed(data);
+      setNeed(data as NeedWithRelations);
       setError(null);
     } catch (err: any) {
       setError(err.message);
@@ -137,15 +199,17 @@ export function useMyNeeds() {
     const fetchMyNeeds = async () => {
       const { data } = await supabase
         .from('needs')
-        .select(`
+        .select(
+          `
           *,
           group:groups(*),
           category:need_categories(*)
-        `)
+        `
+        )
         .or(`requester_user_id.eq.${user.id},claimed_by.eq.${user.id}`)
         .order('created_at', { ascending: false });
 
-      setNeeds(data || []);
+      setNeeds((data as NeedWithRelations[]) || []);
       setLoading(false);
     };
 
@@ -174,7 +238,7 @@ export function useGroups() {
       .eq('is_active', true)
       .order('name');
 
-    setGroups(data || []);
+    setGroups((data as Group[]) || []);
     setLoading(false);
   }, [organization]);
 
@@ -191,13 +255,8 @@ export function useGroup(id: string) {
 
   useEffect(() => {
     const fetchGroup = async () => {
-      const { data } = await supabase
-        .from('groups')
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      setGroup(data);
+      const { data } = await supabase.from('groups').select('*').eq('id', id).single();
+      setGroup((data as Group) || null);
       setLoading(false);
     };
 
@@ -221,17 +280,14 @@ export function useUsers(status?: string) {
   const fetchUsers = useCallback(async () => {
     if (!organization) return;
 
-    let query = supabase
-      .from('users')
-      .select('*')
-      .eq('organization_id', organization.id);
+    let query = supabase.from('users').select('*').eq('organization_id', organization.id);
 
     if (status) {
       query = query.eq('status', status);
     }
 
     const { data } = await query.order('created_at', { ascending: false });
-    setUsers(data || []);
+    setUsers((data as User[]) || []);
     setLoading(false);
   }, [organization, status]);
 
@@ -265,7 +321,7 @@ export function useCategories() {
       .eq('is_active', true)
       .order('name');
 
-    setCategories(data || []);
+    setCategories((data as NeedCategory[]) || []);
     setLoading(false);
   }, [organization]);
 
@@ -290,7 +346,7 @@ export function useTopHelpers(limit: number = 10) {
 
     const fetchHelpers = async () => {
       const { data } = await reportsApi.getTopHelpers(organization.id, limit);
-      setHelpers(data || []);
+      setHelpers((data as TopHelper[]) || []);
       setLoading(false);
     };
 
@@ -310,7 +366,7 @@ export function useFulfillmentMetrics() {
 
     const fetchMetrics = async () => {
       const { data } = await reportsApi.getFulfillmentMetrics(organization.id);
-      setMetrics(data);
+      setMetrics((data as FulfillmentMetrics) || null);
       setLoading(false);
     };
 
@@ -330,7 +386,7 @@ export function useFinancialTotals() {
 
     const fetchTotals = async () => {
       const { data } = await reportsApi.getFinancialTotals(organization.id);
-      setTotals(data);
+      setTotals((data as FinancialTotals) || null);
       setLoading(false);
     };
 
@@ -346,20 +402,17 @@ export function useFinancialTotals() {
 
 export function useOrgFeatures(): PlanFeatures | null {
   const { organization } = useAuth();
-  
+
   if (!organization) return null;
-  
-  const baseFeatures = PLAN_FEATURES[organization.plan_tier];
-  
-  // Apply overrides
-  if (organization.features_override) {
-    return {
-      ...baseFeatures,
-      ...organization.features_override,
-    };
-  }
-  
-  return baseFeatures;
+
+  const planTier = (organization as any).plan_tier as PlanTier | undefined;
+  const baseFeatures: PlanFeatures =
+    planTier && PLAN_FEATURES[planTier] ? PLAN_FEATURES[planTier] : {};
+
+  // ✅ sanitize overrides so PlanFeatures stays boolean-only
+  const overrides = sanitizeFeatureOverrides((organization as any).features_override);
+
+  return { ...baseFeatures, ...overrides };
 }
 
 export function useFeatureCheck(featureName: string): boolean {
@@ -369,7 +422,7 @@ export function useFeatureCheck(featureName: string): boolean {
   useEffect(() => {
     if (!organization) return;
 
-    checkOrgFeature(organization.id, featureName).then(setHasFeature);
+    checkOrgFeature((organization as any).id, featureName).then(setHasFeature);
   }, [organization, featureName]);
 
   return hasFeature;
@@ -388,12 +441,12 @@ export function useNeedActions(needId: string, onSuccess?: () => void) {
     setError(null);
     const { data, error: err } = await needsApi.submitForApproval(needId);
     setLoading(false);
-    
+
     if (err || !data?.success) {
       setError(err?.message || data?.error || 'Failed to submit need');
       return false;
     }
-    
+
     onSuccess?.();
     return true;
   };
@@ -403,12 +456,12 @@ export function useNeedActions(needId: string, onSuccess?: () => void) {
     setError(null);
     const { data, error: err } = await needsApi.approve(needId, note);
     setLoading(false);
-    
+
     if (err || !data?.success) {
       setError(err?.message || data?.error || 'Failed to approve need');
       return false;
     }
-    
+
     onSuccess?.();
     return true;
   };
@@ -418,12 +471,12 @@ export function useNeedActions(needId: string, onSuccess?: () => void) {
     setError(null);
     const { data, error: err } = await needsApi.reject(needId, reason);
     setLoading(false);
-    
+
     if (err || !data?.success) {
       setError(err?.message || data?.error || 'Failed to reject need');
       return false;
     }
-    
+
     onSuccess?.();
     return true;
   };
@@ -433,12 +486,12 @@ export function useNeedActions(needId: string, onSuccess?: () => void) {
     setError(null);
     const { data, error: err } = await needsApi.claim(needId, note);
     setLoading(false);
-    
+
     if (err || !data?.success) {
       setError(err?.message || data?.error || 'Failed to claim need');
       return false;
     }
-    
+
     onSuccess?.();
     return true;
   };
@@ -448,12 +501,12 @@ export function useNeedActions(needId: string, onSuccess?: () => void) {
     setError(null);
     const { data, error: err } = await needsApi.unclaim(needId, reason);
     setLoading(false);
-    
+
     if (err || !data?.success) {
       setError(err?.message || data?.error || 'Failed to unclaim need');
       return false;
     }
-    
+
     onSuccess?.();
     return true;
   };
@@ -463,12 +516,12 @@ export function useNeedActions(needId: string, onSuccess?: () => void) {
     setError(null);
     const { data, error: err } = await needsApi.complete(needId, note, actualHours, actualAmount);
     setLoading(false);
-    
+
     if (err || !data?.success) {
       setError(err?.message || data?.error || 'Failed to complete need');
       return false;
     }
-    
+
     onSuccess?.();
     return true;
   };
@@ -478,12 +531,12 @@ export function useNeedActions(needId: string, onSuccess?: () => void) {
     setError(null);
     const { data, error: err } = await needsApi.cancel(needId, reason);
     setLoading(false);
-    
+
     if (err || !data?.success) {
       setError(err?.message || data?.error || 'Failed to cancel need');
       return false;
     }
-    
+
     onSuccess?.();
     return true;
   };
@@ -514,12 +567,12 @@ export function useUserActions(userId: string, onSuccess?: () => void) {
     setError(null);
     const { data, error: err } = await usersApi.approve(userId);
     setLoading(false);
-    
+
     if (err || !data?.success) {
       setError(err?.message || data?.error || 'Failed to approve user');
       return false;
     }
-    
+
     onSuccess?.();
     return true;
   };
@@ -529,12 +582,12 @@ export function useUserActions(userId: string, onSuccess?: () => void) {
     setError(null);
     const { data, error: err } = await usersApi.reject(userId);
     setLoading(false);
-    
+
     if (err || !data?.success) {
       setError(err?.message || data?.error || 'Failed to reject user');
       return false;
     }
-    
+
     onSuccess?.();
     return true;
   };

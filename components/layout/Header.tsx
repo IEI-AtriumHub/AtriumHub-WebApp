@@ -22,11 +22,17 @@ interface HeaderProps {
   onMenuClick?: () => void;
 }
 
+type NavItem = {
+  name: string;
+  href: string;
+  adminOnly?: boolean;
+};
+
 export function Header({ onMenuClick }: HeaderProps) {
   const { user, organization, signOut, isAdmin } = useAuth();
   const pathname = usePathname();
 
-  const navigation = [
+  const navigation: NavItem[] = [
     { name: 'Home', href: '/' },
     { name: 'Browse Needs', href: '/needs' },
     { name: 'My Needs', href: '/my-needs' },
@@ -117,9 +123,7 @@ export function Header({ onMenuClick }: HeaderProps) {
               >
                 <Menu.Items className="absolute right-0 mt-2 w-48 origin-top-right rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
                   <div className="px-4 py-2 border-b border-gray-100">
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      {user?.full_name}
-                    </p>
+                    <p className="text-sm font-medium text-gray-900 truncate">{user?.full_name}</p>
                     <p className="text-xs text-gray-500 truncate">{user?.email}</p>
                   </div>
 
@@ -127,10 +131,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                     {({ active }) => (
                       <Link
                         href="/profile"
-                        className={cn(
-                          'flex items-center px-4 py-2 text-sm',
-                          active ? 'bg-gray-100' : ''
-                        )}
+                        className={cn('flex items-center px-4 py-2 text-sm', active ? 'bg-gray-100' : '')}
                       >
                         <UserCircleIcon className="mr-3 h-5 w-5 text-gray-400" />
                         Profile
@@ -143,10 +144,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                       {({ active }) => (
                         <Link
                           href="/admin/settings"
-                          className={cn(
-                            'flex items-center px-4 py-2 text-sm',
-                            active ? 'bg-gray-100' : ''
-                          )}
+                          className={cn('flex items-center px-4 py-2 text-sm', active ? 'bg-gray-100' : '')}
                         >
                           <Cog6ToothIcon className="mr-3 h-5 w-5 text-gray-400" />
                           Settings

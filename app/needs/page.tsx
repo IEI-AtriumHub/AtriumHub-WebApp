@@ -17,15 +17,11 @@ interface Need {
   need_type: string;
   created_at: string;
   requester_user_id: string;
-  users?: {
-    full_name: string;
-  };
-  organizations?: {
-    display_name: string;
-  };
-  need_categories?: {
-    name: string;
-  };
+
+  // Normalize Supabase joins to single object (or null)
+  users: { full_name: string } | null;
+  organizations: { display_name: string } | null;
+  need_categories: { name: string } | null;
 }
 
 const urgencyColors: Record<string, string> = {
@@ -69,7 +65,8 @@ export default function NeedsPage() {
 
         let query = supabase
           .from('needs')
-          .select(`
+          .select(
+            `
             id,
             title,
             description,
@@ -81,23 +78,32 @@ export default function NeedsPage() {
             users:requester_user_id (full_name),
             organizations (display_name),
             need_categories:category_id (name)
-          `)
+          `
+          )
           .eq('status', 'APPROVED_OPEN')
           .order('created_at', { ascending: false });
 
-        // ✅ Tenant isolation in the UI: normal users only see needs in their org
+        // Tenant isolation in the UI: normal users only see needs in their org
         if (!isSuperAdmin && organization?.id) {
           query = query.eq('organization_id', organization.id);
         }
 
         const { data, error } = await query;
-
         if (error) throw error;
-        setNeeds(data || []);
+
+        const normalized: Need[] = (data || []).map((n: any) => ({
+          ...n,
+          users: Array.isArray(n.users) ? (n.users[0] ?? null) : (n.users ?? null),
+          organizations: Array.isArray(n.organizations) ? (n.organizations[0] ?? null) : (n.organizations ?? null),
+          need_categories: Array.isArray(n.need_categories) ? (n.need_categories[0] ?? null) : (n.need_categories ?? null),
+        }));
+
+        setNeeds(normalized);
         setError(null);
       } catch (error: any) {
         console.error('Error fetching needs:', error);
         setError(error.message || 'Failed to load needs');
+        setNeeds([]);
       } finally {
         setLoading(false);
       }
@@ -189,9 +195,7 @@ export default function NeedsPage() {
               </div>
 
               <div className="mt-4 flex justify-between items-center">
-                <span className="text-sm text-gray-400">
-                  {new Date(need.created_at).toLocaleDateString()}
-                </span>
+                <span className="text-sm text-gray-400">{new Date(need.created_at).toLocaleDateString()}</span>
 
                 <div className="flex gap-2">
                   {user?.id !== need.requester_user_id && (

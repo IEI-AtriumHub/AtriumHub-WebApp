@@ -20,11 +20,12 @@ interface Need {
   requester_user_id: string;
   claimed_by: string | null;
 
-  requester?: { full_name: string; email?: string | null };
-  helper?: { full_name: string; email?: string | null };
+  // Supabase joins can come back as arrays; we normalize to single objects (or null)
+  requester: { full_name: string; email?: string | null } | null;
+  helper: { full_name: string; email?: string | null } | null;
 
-  organizations?: { display_name: string };
-  need_categories?: { name: string } | null;
+  organizations: { display_name: string } | null;
+  need_categories: { name: string } | null;
 }
 
 const urgencyColors: Record<string, string> = {
@@ -57,8 +58,7 @@ export default function NeedsInProgressPage() {
 
   const supabase = createClientComponentClient();
 
-  // In impersonation mode, we *want* to behave like the impersonated org user.
-  // So treat superadmin as non-superadmin for filtering purposes while impersonating.
+  // In impersonation mode, behave like the impersonated org user.
   const effectiveIsSuperAdmin = useMemo(() => isSuperAdmin && !isImpersonating, [isSuperAdmin, isImpersonating]);
 
   useEffect(() => {
@@ -74,7 +74,8 @@ export default function NeedsInProgressPage() {
 
         let query = supabase
           .from('needs')
-          .select(`
+          .select(
+            `
             id,
             title,
             description,
@@ -89,7 +90,8 @@ export default function NeedsInProgressPage() {
             helper:claimed_by (full_name, email),
             organizations (display_name),
             need_categories:category_id (name)
-          `)
+          `
+          )
           .eq('status', 'CLAIMED_IN_PROGRESS')
           .order('claimed_at', { ascending: false })
           .order('created_at', { ascending: false });
@@ -100,10 +102,17 @@ export default function NeedsInProgressPage() {
         }
 
         const { data, error } = await query;
-
         if (error) throw error;
 
-        setNeeds((data as Need[]) || []);
+        const normalized: Need[] = (data || []).map((n: any) => ({
+          ...n,
+          requester: Array.isArray(n.requester) ? (n.requester[0] ?? null) : (n.requester ?? null),
+          helper: Array.isArray(n.helper) ? (n.helper[0] ?? null) : (n.helper ?? null),
+          organizations: Array.isArray(n.organizations) ? (n.organizations[0] ?? null) : (n.organizations ?? null),
+          need_categories: Array.isArray(n.need_categories) ? (n.need_categories[0] ?? null) : (n.need_categories ?? null),
+        }));
+
+        setNeeds(normalized);
         setError(null);
       } catch (e: any) {
         console.error('Error fetching in-progress needs:', e);
@@ -224,13 +233,9 @@ export default function NeedsInProgressPage() {
               </div>
 
               <div className="mt-4 flex justify-between items-center">
-                <span className="text-sm text-gray-400">
-                  Created {new Date(need.created_at).toLocaleDateString()}
-                </span>
+                <span className="text-sm text-gray-400">Created {new Date(need.created_at).toLocaleDateString()}</span>
                 <Link href={`/needs/${need.id}`}>
-                  <Button size="sm">
-                    Open
-                  </Button>
+                  <Button size="sm">Open</Button>
                 </Link>
               </div>
             </div>

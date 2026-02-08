@@ -28,13 +28,13 @@ interface PendingNeed {
   users: {
     full_name: string;
     email: string;
-  };
+  } | null;
   organizations: {
     display_name: string;
-  };
+  } | null;
   groups: {
     name: string;
-  };
+  } | null;
 }
 
 interface PendingUser {
@@ -44,7 +44,7 @@ interface PendingUser {
   created_at: string;
   organizations?: {
     display_name: string;
-  };
+  } | null;
 }
 
 interface Stats {
@@ -58,7 +58,12 @@ export default function AdminPage() {
   const { user, loading: authLoading, isAdmin, isSuperAdmin, signOut } = useAuth();
   const [pendingNeeds, setPendingNeeds] = useState<PendingNeed[]>([]);
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
-  const [stats, setStats] = useState<Stats>({ pendingNeeds: 0, pendingUsers: 0, activeNeeds: 0, completedNeeds: 0 });
+  const [stats, setStats] = useState<Stats>({
+    pendingNeeds: 0,
+    pendingUsers: 0,
+    activeNeeds: 0,
+    completedNeeds: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const supabase = createClientComponentClient();
@@ -95,7 +100,15 @@ export default function AdminPage() {
 
         const { data: needsData, error: needsError } = await needsQuery;
         if (needsError) throw needsError;
-        setPendingNeeds(needsData || []);
+
+        const normalizedNeeds: PendingNeed[] = (needsData || []).map((n: any) => ({
+          ...n,
+          users: Array.isArray(n.users) ? (n.users[0] ?? null) : (n.users ?? null),
+          organizations: Array.isArray(n.organizations) ? (n.organizations[0] ?? null) : (n.organizations ?? null),
+          groups: Array.isArray(n.groups) ? (n.groups[0] ?? null) : (n.groups ?? null),
+        }));
+
+        setPendingNeeds(normalizedNeeds);
 
         let usersQuery = supabase
           .from('users')
@@ -115,7 +128,13 @@ export default function AdminPage() {
 
         const { data: usersData, error: usersError } = await usersQuery;
         if (usersError) throw usersError;
-        setPendingUsers(usersData || []);
+
+        const normalizedUsers: PendingUser[] = (usersData || []).map((u: any) => ({
+          ...u,
+          organizations: Array.isArray(u.organizations) ? (u.organizations[0] ?? null) : (u.organizations ?? null),
+        }));
+
+        setPendingUsers(normalizedUsers);
 
         let pendingNeedsQuery = supabase
           .from('needs')
@@ -170,6 +189,7 @@ export default function AdminPage() {
       fetchData();
     }
   }, [authLoading, user, isAdmin, isSuperAdmin, supabase]);
+
 
   const handleApproveNeed = async (needId: string) => {
     setProcessingId(needId);
