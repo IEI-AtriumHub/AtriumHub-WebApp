@@ -13,7 +13,6 @@ const ROOT_DOMAIN = 'atriumhub.org'
 const PUBLIC_FILE = /\.(.*)$/
 
 function normalizeHost(host: string) {
-  // Remove port if present (e.g., localhost:3000)
   return host.toLowerCase().split(':')[0]
 }
 
@@ -40,38 +39,34 @@ function extractSubdomain(host: string) {
   return sub || null
 }
 
-function rootLoginUrlWithError(request: NextRequest, error: string) {
-  const url = new URL('/auth/login', request.url)
-  url.hostname = ROOT_DOMAIN
-  url.searchParams.set('error', error)
-  return url
-}
-
-function redirectToRootHome(request: NextRequest) {
+function redirectToRoot(request: NextRequest, withError?: string) {
   const url = request.nextUrl.clone()
   url.hostname = ROOT_DOMAIN
-  url.pathname = '/'
-  url.search = ''
+  if (withError) url.searchParams.set('error', withError)
   return NextResponse.redirect(url)
 }
 
 /**
  * Checks whether a tenant slug exists in your Supabase `organizations` table.
  *
- * Because we don't know your exact column name, this tries common options:
- * - slug
- * - subdomain
- * - org_slug
- *
- * Whichever column exists + matches will return true.
+ * IMPORTANT:
+ * - We do NOT reference `subdomain` because your DB confirmed it doesn't exist.
+ * - We try common slug column names safely.
+ * - If you set SUPABASE_SERVICE_ROLE_KEY (recommended), this lookup will work even with RLS.
  */
 async function tenantExists(slug: string): Promise<boolean> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  if (!supabaseUrl || !anonKey) return false
+  if (!supabaseUrl) return false
 
-  const candidateColumns = ['slug', 'subdomain', 'org_slug']
+  // Prefer service role to avoid RLS blocking tenant discovery
+  const keyToUse = serviceRoleKey || anonKey
+  if (!keyToUse) return false
+
+  // Try likely column names. (We already know `subdomain` is NOT one of them.)
+  const candidateColumns = ['slug', 'org_slug', 'tenant_slug', 'handle', 'code']
 
   for (const col of candidateColumns) {
     const url = new URL(`${supabaseUrl}/rest/v1/organizations`)
@@ -81,14 +76,25 @@ async function tenantExists(slug: string): Promise<boolean> {
 
     const res = await fetch(url.toString(), {
       headers: {
-        apikey: anonKey,
-        authorization: `Bearer ${anonKey}`,
+        apikey: keyToUse,
+        authorization: `Bearer ${keyToUse}`,
       },
       cache: 'no-store',
     })
 
-    // If the column doesn't exist, Supabase often returns 400 — try the next column.
-    if (!res.ok) continue
+    if (!res.ok) {
+      // If the column doesn't exist, PostgREST returns 400 w/ code 42703.
+      // Try the next candidate column.
+      try {
+        const body = await res.json()
+        if (body?.code === '42703') continue
+      } catch {
+        // ignore parse errors
+      }
+      // Any other failure (403/401 etc.) means we can't confirm.
+      // If this happens with anon key, you almost certainly need service role.
+      continue
+    }
 
     const data = (await res.json()) as Array<{ id: string }>
     if (Array.isArray(data) && data.length > 0) return true
@@ -102,7 +108,7 @@ export default async function proxy(request: NextRequest) {
   const host = normalizeHost(hostHeader)
   const pathname = request.nextUrl.pathname
 
-  // Skip Next internals/static (let Next handle)
+  // Skip internals/static
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api') ||
@@ -112,7 +118,7 @@ export default async function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Dev + Vercel preview domains: allow (no tenant enforcement)
+  // Dev + Vercel preview domains: allow
   if (isLocalhost(host) || isVercelDomain(host)) {
     const res = NextResponse.next()
     const supabase = createMiddlewareClient({ req: request, res })
@@ -120,12 +126,8 @@ export default async function proxy(request: NextRequest) {
     return res
   }
 
-  // Routes that should be reachable without a session
-  const publicRoutes = ['/auth/login', '/auth/signup', '/auth/forgot-password']
-  const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route))
-
   // Root domain (atriumhub.org / www): allow (no tenant header)
-  // Still enforce auth gating for non-public routes.
+  // but do auth gating for protected routes
   if (isRootDomain(host)) {
     const res = NextResponse.next()
     const supabase = createMiddlewareClient({ req: request, res })
@@ -134,12 +136,13 @@ export default async function proxy(request: NextRequest) {
       data: { session },
     } = await supabase.auth.getSession()
 
-    // If no session and not public route, redirect to login
+    const publicRoutes = ['/auth/login', '/auth/signup', '/auth/forgot-password']
+    const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route))
+
     if (!session && !isPublicRoute) {
       return NextResponse.redirect(new URL('/auth/login', request.url))
     }
 
-    // If has session and on auth page, redirect to home
     if (session && isPublicRoute) {
       return NextResponse.redirect(new URL('/', request.url))
     }
@@ -147,33 +150,28 @@ export default async function proxy(request: NextRequest) {
     return res
   }
 
-  // If it's not our root domain or a subdomain of it, bounce to root home.
+  // Not root and not a subdomain of it -> bounce to root
   if (!isSubdomainOfRoot(host)) {
-    return redirectToRootHome(request)
+    return redirectToRoot(request)
   }
 
-  // Subdomain flow: extract + validate tenant exists
+  // Subdomain flow: validate tenant exists
   const subdomain = extractSubdomain(host)
   if (!subdomain) {
-    return redirectToRootHome(request)
-  }
-
-  // Reserve common subdomains (optional safety)
-  // If someone hits www.atriumhub.org it already matched root; this is just extra guard.
-  const RESERVED = new Set(['www'])
-  if (RESERVED.has(subdomain)) {
-    return redirectToRootHome(request)
+    return redirectToRoot(request)
   }
 
   const exists = await tenantExists(subdomain)
-
-  // Unknown tenant: DO NOT show login page for that subdomain.
-  // Send user to root login with an explicit error so UX is clear.
   if (!exists) {
-    return NextResponse.redirect(rootLoginUrlWithError(request, 'organization_not_found'))
+    // send user to root login w/ an error marker
+    // TEMP DEBUG: add headers so we can confirm what the proxy decided
+    const dbg = redirectToRoot(request, 'organization_not_found')
+    dbg.headers.set('x-debug-tenant', subdomain)
+    dbg.headers.set('x-debug-tenant-exists', 'false')
+    return dbg
   }
 
-  // Tenant exists → proceed with auth gating + tenant header
+  // Tenant exists -> proceed with auth gating + header
   const res = NextResponse.next()
   const supabase = createMiddlewareClient({ req: request, res })
 
@@ -181,31 +179,23 @@ export default async function proxy(request: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession()
 
-  // If no session and not public route, redirect to login (keep user on tenant subdomain)
+  const publicRoutes = ['/auth/login', '/auth/signup', '/auth/forgot-password']
+  const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route))
+
   if (!session && !isPublicRoute) {
     return NextResponse.redirect(new URL('/auth/login', request.url))
   }
 
-  // If has session and on auth page, redirect to home (keep user on tenant subdomain)
   if (session && isPublicRoute) {
     return NextResponse.redirect(new URL('/', request.url))
   }
 
-  // Add tenant header for server components / server actions
   res.headers.set('x-tenant-slug', subdomain)
-
   return res
 }
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - common public image files
-     */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }
