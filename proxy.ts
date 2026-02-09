@@ -10,7 +10,6 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 const ROOT_DOMAIN = 'atriumhub.org'
-
 const PUBLIC_FILE = /\.(.*)$/
 
 function normalizeHost(host: string) {
@@ -41,9 +40,18 @@ function extractSubdomain(host: string) {
   return sub || null
 }
 
-function redirectToRoot(request: NextRequest) {
+function rootLoginUrlWithError(request: NextRequest, error: string) {
+  const url = new URL('/auth/login', request.url)
+  url.hostname = ROOT_DOMAIN
+  url.searchParams.set('error', error)
+  return url
+}
+
+function redirectToRootHome(request: NextRequest) {
   const url = request.nextUrl.clone()
   url.hostname = ROOT_DOMAIN
+  url.pathname = '/'
+  url.search = ''
   return NextResponse.redirect(url)
 }
 
@@ -94,7 +102,7 @@ export default async function proxy(request: NextRequest) {
   const host = normalizeHost(hostHeader)
   const pathname = request.nextUrl.pathname
 
-  // Skip next internals/static
+  // Skip Next internals/static (let Next handle)
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api') ||
@@ -104,7 +112,7 @@ export default async function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Dev + Vercel preview domains: allow
+  // Dev + Vercel preview domains: allow (no tenant enforcement)
   if (isLocalhost(host) || isVercelDomain(host)) {
     const res = NextResponse.next()
     const supabase = createMiddlewareClient({ req: request, res })
@@ -112,19 +120,19 @@ export default async function proxy(request: NextRequest) {
     return res
   }
 
+  // Routes that should be reachable without a session
+  const publicRoutes = ['/auth/login', '/auth/signup', '/auth/forgot-password']
+  const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route))
+
   // Root domain (atriumhub.org / www): allow (no tenant header)
+  // Still enforce auth gating for non-public routes.
   if (isRootDomain(host)) {
     const res = NextResponse.next()
     const supabase = createMiddlewareClient({ req: request, res })
 
-    // Refresh session
     const {
       data: { session },
     } = await supabase.auth.getSession()
-
-    // Public routes that don't require auth
-    const publicRoutes = ['/auth/login', '/auth/signup', '/auth/forgot-password']
-    const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route))
 
     // If no session and not public route, redirect to login
     if (!session && !isPublicRoute) {
@@ -139,52 +147,51 @@ export default async function proxy(request: NextRequest) {
     return res
   }
 
-  // If it's not our root domain or a subdomain of it, bounce to root
+  // If it's not our root domain or a subdomain of it, bounce to root home.
   if (!isSubdomainOfRoot(host)) {
-    return redirectToRoot(request)
+    return redirectToRootHome(request)
   }
 
-  // Subdomain flow: validate tenant exists
+  // Subdomain flow: extract + validate tenant exists
   const subdomain = extractSubdomain(host)
-
-  // If we couldn't extract, bounce to root
   if (!subdomain) {
-    return redirectToRoot(request)
+    return redirectToRootHome(request)
   }
 
-  // Optional: you can reserve/allow certain subdomains without DB lookup
-  // const RESERVED = new Set(['www'])
-  // if (RESERVED.has(subdomain)) return NextResponse.next()
+  // Reserve common subdomains (optional safety)
+  // If someone hits www.atriumhub.org it already matched root; this is just extra guard.
+  const RESERVED = new Set(['www'])
+  if (RESERVED.has(subdomain)) {
+    return redirectToRootHome(request)
+  }
 
   const exists = await tenantExists(subdomain)
+
+  // Unknown tenant: DO NOT show login page for that subdomain.
+  // Send user to root login with an explicit error so UX is clear.
   if (!exists) {
-    return redirectToRoot(request)
+    return NextResponse.redirect(rootLoginUrlWithError(request, 'organization_not_found'))
   }
 
-  // Tenant exists → proceed with your existing auth gating + header
+  // Tenant exists → proceed with auth gating + tenant header
   const res = NextResponse.next()
   const supabase = createMiddlewareClient({ req: request, res })
 
-  // Refresh session if expired
   const {
     data: { session },
   } = await supabase.auth.getSession()
 
-  // Public routes that don't require auth
-  const publicRoutes = ['/auth/login', '/auth/signup', '/auth/forgot-password']
-  const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route))
-
-  // If no session and not public route, redirect to login
+  // If no session and not public route, redirect to login (keep user on tenant subdomain)
   if (!session && !isPublicRoute) {
     return NextResponse.redirect(new URL('/auth/login', request.url))
   }
 
-  // If has session and on auth page, redirect to home
+  // If has session and on auth page, redirect to home (keep user on tenant subdomain)
   if (session && isPublicRoute) {
     return NextResponse.redirect(new URL('/', request.url))
   }
 
-  // Add tenant header for server components
+  // Add tenant header for server components / server actions
   res.headers.set('x-tenant-slug', subdomain)
 
   return res
