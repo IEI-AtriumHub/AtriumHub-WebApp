@@ -1,7 +1,7 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import Button from '@/components/ui/Button';
@@ -10,60 +10,33 @@ import toast from 'react-hot-toast';
 
 const ROOT_DOMAIN = 'atriumhub.org';
 
-function getHost(): string {
-  if (typeof window === 'undefined') return '';
-  return window.location.host.toLowerCase();
-}
-
-function stripPort(host: string): string {
-  return host.split(':')[0];
-}
-
-function isLocalhost(host: string): boolean {
-  return host.includes('localhost') || host.startsWith('127.0.0.1');
-}
-
-function isVercelPreview(host: string): boolean {
-  return host.endsWith('.vercel.app');
-}
-
-function isRootDomain(hostNoPort: string): boolean {
-  return hostNoPort === ROOT_DOMAIN || hostNoPort === `www.${ROOT_DOMAIN}`;
-}
-
-function isSubdomainOfRoot(hostNoPort: string): boolean {
-  return hostNoPort.endsWith(`.${ROOT_DOMAIN}`) && !isRootDomain(hostNoPort);
-}
-
-function LoginPageInner() {
+export default function LoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const supabase = createClientComponentClient();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const hostInfo = useMemo(() => {
-    const host = getHost();
-    const hostNoPort = stripPort(host);
-
-    const allowSignup =
-      isLocalhost(hostNoPort) ||
-      isVercelPreview(hostNoPort) ||
-      isSubdomainOfRoot(hostNoPort);
-
-    return { host, hostNoPort, allowSignup };
-  }, []);
-
-  const err = searchParams?.get('error');
-  const showOrgNotFoundBanner = err === 'organization_not_found';
+  // UI flags (computed client-side so it works for both root + subdomains)
+  const [showOrgNotFound, setShowOrgNotFound] = useState(false);
+  const [showSignupLink, setShowSignupLink] = useState(true);
 
   useEffect(() => {
-    if (showOrgNotFoundBanner) {
-      toast.error('Organization not found. Please check your URL (tenant subdomain).');
-    }
-  }, [showOrgNotFoundBanner]);
+    // Compute from the *actual browser URL* (not env vars, not static prerender)
+    const host = window.location.hostname.toLowerCase();
+    const isRoot = host === ROOT_DOMAIN || host === `www.${ROOT_DOMAIN}`;
+    const isTenant = host.endsWith(`.${ROOT_DOMAIN}`) && !isRoot;
+
+    const params = new URLSearchParams(window.location.search);
+    const error = params.get('error');
+
+    // Only show the red banner on ROOT when we were redirected due to bad tenant
+    setShowOrgNotFound(isRoot && error === 'organization_not_found');
+
+    // Only show "create a new account" on tenant subdomains
+    setShowSignupLink(isTenant);
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -106,8 +79,8 @@ function LoginPageInner() {
           Sign in to your account
         </h2>
 
-        {showOrgNotFoundBanner && (
-          <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        {showOrgNotFound && (
+          <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             <div className="font-semibold">Organization not found</div>
             <div className="mt-1">
               Use a valid tenant subdomain, like{' '}
@@ -116,16 +89,19 @@ function LoginPageInner() {
           </div>
         )}
 
-        <p className="mt-2 text-center text-sm text-gray-600">
-          {hostInfo.allowSignup ? (
+        <p className="mt-3 text-center text-sm text-gray-600">
+          {showSignupLink ? (
             <>
               Or{' '}
-              <Link href="/auth/signup" className="font-medium text-blue-600 hover:text-blue-500">
+              <Link
+                href="/auth/signup"
+                className="font-medium text-blue-600 hover:text-blue-500"
+              >
                 create a new account
               </Link>
             </>
           ) : (
-            <>Need an account? Use your organization’s invite link (tenant subdomain).</>
+            <>Need an account? Use your organization&apos;s invite link (tenant subdomain).</>
           )}
         </p>
       </div>
@@ -158,13 +134,5 @@ function LoginPageInner() {
         </div>
       </div>
     </div>
-  );
-}
-
-export default function LoginPage() {
-  return (
-    <Suspense fallback={<div className="min-h-screen bg-gray-50" />}>
-      <LoginPageInner />
-    </Suspense>
   );
 }
