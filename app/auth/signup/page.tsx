@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Suspense, useState, useEffect } from 'react';
@@ -13,8 +12,6 @@ interface Group {
   id: string;
   name: string;
 }
-
-const ROOT_DOMAIN = 'atriumhub.org';
 
 /**
  * Inner component that is allowed to use useSearchParams().
@@ -35,52 +32,36 @@ function SignupInner() {
   const [organization, setOrganization] = useState<{ id: string; display_name: string } | null>(null);
   const [orgError, setOrgError] = useState<string | null>(null);
 
-  // Get organization from subdomain ONLY (no query param fallback in production)
+  // Resolve organization from tenant subdomain or query param
   useEffect(() => {
     async function getOrganization() {
       setOrgLoading(true);
 
-      const hostname = window.location.hostname.toLowerCase();
-
-      const isRoot =
-        hostname === ROOT_DOMAIN || hostname === `www.${ROOT_DOMAIN}`;
-
-      const isTenantSubdomain =
-        hostname.endsWith(`.${ROOT_DOMAIN}`) && !isRoot;
-
-      const isLocalTenant = hostname.endsWith('.localhost');
-
       let slug: string | null = null;
+      const hostname = window.location.hostname;
 
-      // Production: require tenant subdomain (org.atriumhub.org)
-      if (isTenantSubdomain) {
+      // Production subdomain (e.g. org.atriumhub.org)
+      if (
+        hostname.endsWith('atriumhub.org') &&
+        hostname !== 'atriumhub.org' &&
+        hostname !== 'www.atriumhub.org'
+      ) {
         slug = hostname.split('.')[0];
       }
-      // Local dev: allow org.localhost
-      else if (isLocalTenant) {
+      // Local dev subdomain (e.g. org.localhost)
+      else if (hostname.endsWith('.localhost')) {
         slug = hostname.split('.')[0];
       }
-      // Anything else (root domain, localhost:3000, random host): BLOCK signup
+      // Fallback: query param ?org=slug
       else {
-        setOrgError(
-          'Sign up is only available through your organization link (tenant subdomain). Please use a URL like faithworkscollective.atriumhub.org.'
-        );
-        setOrgLoading(false);
-        return;
-      }
-
-      // Extra safety: never allow query param org override in production
-      // (prevents someone from using atriumhub.org/auth/signup?org=validslug)
-      if (isRoot && searchParams.get('org')) {
-        setOrgError(
-          'Sign up is only available through your organization link (tenant subdomain). Please use your organization URL.'
-        );
-        setOrgLoading(false);
-        return;
+        slug = searchParams.get('org');
       }
 
       if (!slug) {
-        setOrgError('No organization specified. Please use a valid organization URL.');
+        setOrgError(
+          'Sign up is only available through your organization’s private access link. ' +
+          'Please contact your administrator for access.'
+        );
         setOrgLoading(false);
         return;
       }
@@ -92,19 +73,26 @@ function SignupInner() {
         .single();
 
       if (error || !data) {
-        setOrgError('Organization not found. Please check your URL.');
+        setOrgError(
+          'Sign up is only available through your organization’s private access link. ' +
+          'Please contact your administrator for access.'
+        );
         setOrgLoading(false);
         return;
       }
 
       if (!data.is_active) {
-        setOrgError('This organization is not currently active.');
+        setOrgError(
+          'This organization is currently inactive. Please contact your administrator.'
+        );
         setOrgLoading(false);
         return;
       }
 
       if (!data.allow_open_signup) {
-        setOrgError('This organization does not allow open signups. Please contact your administrator.');
+        setOrgError(
+          'This organization does not allow open sign-ups. Please contact your administrator.'
+        );
         setOrgLoading(false);
         return;
       }
@@ -171,7 +159,7 @@ function SignupInner() {
         role: 'USER',
       });
 
-      toast.success('Account created! Awaiting admin approval.');
+      toast.success('Account created! Awaiting administrator approval.');
       router.push('/auth/pending-approval');
     } catch (error: any) {
       toast.error(error.message || 'Failed to create account');
@@ -192,17 +180,10 @@ function SignupInner() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
         <div className="bg-white p-6 rounded-lg shadow text-center max-w-md">
-          <h2 className="text-xl font-semibold text-red-600 mb-4">Unable to Sign Up</h2>
-          <p className="text-gray-600">{orgError}</p>
-          <div className="mt-4 text-sm text-gray-600">
-            Go to your organization link (example):{' '}
-            <span className="font-mono">faithworkscollective.atriumhub.org</span>
-          </div>
-          <div className="mt-4">
-            <Link href="/auth/login" className="font-medium text-blue-600 hover:text-blue-500">
-              Return to Sign In
-            </Link>
-          </div>
+          <h2 className="text-xl font-semibold text-red-600 mb-4">
+            Unable to Sign Up
+          </h2>
+          <p className="text-gray-700">{orgError}</p>
         </div>
       </div>
     );
@@ -211,7 +192,9 @@ function SignupInner() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <h2 className="text-3xl font-extrabold text-gray-900">Create your account</h2>
+        <h2 className="text-3xl font-extrabold text-gray-900">
+          Create your account
+        </h2>
         <p className="mt-2 text-sm text-gray-600">
           Joining <span className="font-semibold">{organization?.display_name}</span>
         </p>
@@ -226,12 +209,26 @@ function SignupInner() {
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
           <form onSubmit={handleSignup} className="space-y-6">
-            <Input label="Full Name" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
-            <Input label="Email address" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <Input
+              label="Full Name"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              required
+            />
+
+            <Input
+              label="Email address"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
 
             {groups.length > 0 && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Select Your Group</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Select Your Group
+                </label>
                 <select
                   value={selectedGroupId}
                   onChange={(e) => setSelectedGroupId(e.target.value)}
@@ -248,7 +245,14 @@ function SignupInner() {
               </div>
             )}
 
-            <Input label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <Input
+              label="Password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+
             <Input
               label="Confirm Password"
               type="password"
