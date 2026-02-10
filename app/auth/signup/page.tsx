@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Suspense, useState, useEffect } from 'react';
@@ -12,6 +13,8 @@ interface Group {
   id: string;
   name: string;
 }
+
+const ROOT_DOMAIN = 'atriumhub.org';
 
 /**
  * Inner component that is allowed to use useSearchParams().
@@ -32,29 +35,48 @@ function SignupInner() {
   const [organization, setOrganization] = useState<{ id: string; display_name: string } | null>(null);
   const [orgError, setOrgError] = useState<string | null>(null);
 
-  // Get organization from subdomain or query param
+  // Get organization from subdomain ONLY (no query param fallback in production)
   useEffect(() => {
     async function getOrganization() {
       setOrgLoading(true);
 
-      let slug: string | null = null;
-      const hostname = window.location.hostname;
+      const hostname = window.location.hostname.toLowerCase();
 
-      // Production subdomain (e.g. church.atriumhub.org)
-      if (
-        hostname.includes('atriumhub.org') &&
-        hostname !== 'atriumhub.org' &&
-        hostname !== 'www.atriumhub.org'
-      ) {
+      const isRoot =
+        hostname === ROOT_DOMAIN || hostname === `www.${ROOT_DOMAIN}`;
+
+      const isTenantSubdomain =
+        hostname.endsWith(`.${ROOT_DOMAIN}`) && !isRoot;
+
+      const isLocalTenant = hostname.endsWith('.localhost');
+
+      let slug: string | null = null;
+
+      // Production: require tenant subdomain (org.atriumhub.org)
+      if (isTenantSubdomain) {
         slug = hostname.split('.')[0];
       }
-      // Local dev subdomain (e.g. church.localhost)
-      else if (hostname.includes('.localhost')) {
+      // Local dev: allow org.localhost
+      else if (isLocalTenant) {
         slug = hostname.split('.')[0];
       }
-      // Fallback: query param ?org=slug
+      // Anything else (root domain, localhost:3000, random host): BLOCK signup
       else {
-        slug = searchParams.get('org');
+        setOrgError(
+          'Sign up is only available through your organization link (tenant subdomain). Please use a URL like faithworkscollective.atriumhub.org.'
+        );
+        setOrgLoading(false);
+        return;
+      }
+
+      // Extra safety: never allow query param org override in production
+      // (prevents someone from using atriumhub.org/auth/signup?org=validslug)
+      if (isRoot && searchParams.get('org')) {
+        setOrgError(
+          'Sign up is only available through your organization link (tenant subdomain). Please use your organization URL.'
+        );
+        setOrgLoading(false);
+        return;
       }
 
       if (!slug) {
@@ -172,6 +194,15 @@ function SignupInner() {
         <div className="bg-white p-6 rounded-lg shadow text-center max-w-md">
           <h2 className="text-xl font-semibold text-red-600 mb-4">Unable to Sign Up</h2>
           <p className="text-gray-600">{orgError}</p>
+          <div className="mt-4 text-sm text-gray-600">
+            Go to your organization link (example):{' '}
+            <span className="font-mono">faithworkscollective.atriumhub.org</span>
+          </div>
+          <div className="mt-4">
+            <Link href="/auth/login" className="font-medium text-blue-600 hover:text-blue-500">
+              Return to Sign In
+            </Link>
+          </div>
         </div>
       </div>
     );
