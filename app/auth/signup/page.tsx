@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState, useEffect } from 'react';
+import { Suspense, useState, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
@@ -28,39 +28,44 @@ function SignupInner() {
   const [selectedGroupId, setSelectedGroupId] = useState('');
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(false);
+
   const [orgLoading, setOrgLoading] = useState(true);
   const [organization, setOrganization] = useState<{ id: string; display_name: string } | null>(null);
   const [orgError, setOrgError] = useState<string | null>(null);
 
-  // Resolve organization from tenant subdomain or query param
+  // Determine tenant slug from host (subdomain) or fallback query param
+  const tenantSlug = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+
+    const hostname = window.location.hostname;
+
+    // Production subdomain (e.g. org.atriumhub.org)
+    if (
+      hostname.endsWith('atriumhub.org') &&
+      hostname !== 'atriumhub.org' &&
+      hostname !== 'www.atriumhub.org'
+    ) {
+      return hostname.split('.')[0] || null;
+    }
+
+    // Local dev subdomain (e.g. org.localhost)
+    if (hostname.endsWith('.localhost')) {
+      return hostname.split('.')[0] || null;
+    }
+
+    // Fallback: query param ?org=slug
+    return searchParams.get('org');
+  }, [searchParams]);
+
+  // Load organization + groups
   useEffect(() => {
     async function getOrganization() {
       setOrgLoading(true);
 
-      let slug: string | null = null;
-      const hostname = window.location.hostname;
-
-      // Production subdomain (e.g. org.atriumhub.org)
-      if (
-        hostname.endsWith('atriumhub.org') &&
-        hostname !== 'atriumhub.org' &&
-        hostname !== 'www.atriumhub.org'
-      ) {
-        slug = hostname.split('.')[0];
-      }
-      // Local dev subdomain (e.g. org.localhost)
-      else if (hostname.endsWith('.localhost')) {
-        slug = hostname.split('.')[0];
-      }
-      // Fallback: query param ?org=slug
-      else {
-        slug = searchParams.get('org');
-      }
-
-      if (!slug) {
+      if (!tenantSlug) {
         setOrgError(
           'Sign up is only available through your organization’s private access link. ' +
-          'Please contact your administrator for access.'
+            'Please contact your administrator for access.'
         );
         setOrgLoading(false);
         return;
@@ -69,30 +74,26 @@ function SignupInner() {
       const { data, error } = await supabase
         .from('organizations')
         .select('id, display_name, is_active, allow_open_signup')
-        .eq('slug', slug)
+        .eq('slug', tenantSlug)
         .single();
 
       if (error || !data) {
         setOrgError(
           'Sign up is only available through your organization’s private access link. ' +
-          'Please contact your administrator for access.'
+            'Please contact your administrator for access.'
         );
         setOrgLoading(false);
         return;
       }
 
       if (!data.is_active) {
-        setOrgError(
-          'This organization is currently inactive. Please contact your administrator.'
-        );
+        setOrgError('This organization is currently inactive. Please contact your administrator.');
         setOrgLoading(false);
         return;
       }
 
       if (!data.allow_open_signup) {
-        setOrgError(
-          'This organization does not allow open sign-ups. Please contact your administrator.'
-        );
+        setOrgError('This organization does not allow open sign-ups. Please contact your administrator.');
         setOrgLoading(false);
         return;
       }
@@ -111,7 +112,7 @@ function SignupInner() {
     }
 
     getOrganization();
-  }, [searchParams]);
+  }, [tenantSlug]);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -134,10 +135,22 @@ function SignupInner() {
     setLoading(true);
 
     try {
+      /**
+       * IMPORTANT:
+       * - We do NOT insert into public.users from the browser.
+       * - Your DB trigger (auth.users -> handle_new_user()) creates the public.users row securely.
+       * - We pass org/group metadata to Auth so the trigger can use it if configured.
+       */
+      const emailRedirectTo =
+        typeof window !== 'undefined'
+          ? `${window.location.origin}/auth/login`
+          : undefined;
+
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: {
+          emailRedirectTo,
           data: {
             full_name: fullName,
             organization_id: organization.id,
@@ -149,18 +162,9 @@ function SignupInner() {
       if (authError) throw authError;
       if (!authData.user) throw new Error('Failed to create user account');
 
-      await supabase.from('users').insert({
-        id: authData.user.id,
-        organization_id: organization.id,
-        email,
-        full_name: fullName,
-        group_id: selectedGroupId || null,
-        status: 'PENDING',
-        role: 'USER',
-      });
-
       toast.success('Account created! Awaiting administrator approval.');
-      router.push('/auth/pending-approval');
+      router.push('/pending-approval');
+      router.refresh();
     } catch (error: any) {
       toast.error(error.message || 'Failed to create account');
     } finally {
@@ -180,9 +184,7 @@ function SignupInner() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
         <div className="bg-white p-6 rounded-lg shadow text-center max-w-md">
-          <h2 className="text-xl font-semibold text-red-600 mb-4">
-            Unable to Sign Up
-          </h2>
+          <h2 className="text-xl font-semibold text-red-600 mb-4">Unable to Sign Up</h2>
           <p className="text-gray-700">{orgError}</p>
         </div>
       </div>
@@ -192,9 +194,7 @@ function SignupInner() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <h2 className="text-3xl font-extrabold text-gray-900">
-          Create your account
-        </h2>
+        <h2 className="text-3xl font-extrabold text-gray-900">Create your account</h2>
         <p className="mt-2 text-sm text-gray-600">
           Joining <span className="font-semibold">{organization?.display_name}</span>
         </p>
@@ -209,12 +209,7 @@ function SignupInner() {
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
           <form onSubmit={handleSignup} className="space-y-6">
-            <Input
-              label="Full Name"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              required
-            />
+            <Input label="Full Name" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
 
             <Input
               label="Email address"
@@ -226,9 +221,7 @@ function SignupInner() {
 
             {groups.length > 0 && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Select Your Group
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Select Your Group</label>
                 <select
                   value={selectedGroupId}
                   onChange={(e) => setSelectedGroupId(e.target.value)}
