@@ -13,11 +13,17 @@ import {
   MapPinIcon,
   ClockIcon,
   CurrencyDollarIcon,
-  UserIcon,
   CheckCircleIcon,
   XCircleIcon,
   HandRaisedIcon,
+  UserIcon,
 } from '@heroicons/react/24/outline';
+
+interface PersonRef {
+  full_name: string;
+  email?: string;
+  groups?: { name: string } | null;
+}
 
 interface Need {
   id: string;
@@ -26,33 +32,55 @@ interface Need {
   status: string;
   need_type: string;
   urgency: string;
+
   created_at: string;
   submitted_at: string;
+
   approved_at: string | null;
+  approved_by: string | null;
+
   rejected_at: string | null;
+  rejected_by: string | null;
   rejection_reason: string | null;
+
   claimed_at: string | null;
   claimed_by: string | null;
+  claim_note?: string | null;
+
+  completed_at: string | null;
+  completed_by: string | null;
+  completion_note: string | null;
+
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  cancellation_reason: string | null;
+
   requester_user_id: string;
   organization_id: string;
-  group_id: string;
+  group_id: string | null;
   category_id: string | null;
+
   work_location: string | null;
   work_start_date: string | null;
   work_end_date: string | null;
   work_estimated_hours: number | null;
   work_skills_required: string[] | null;
   work_tools_needed: string[] | null;
+
   financial_amount: number | null;
   financial_currency: string | null;
   financial_purpose: string | null;
   financial_due_date: string | null;
-  users: { id: string; full_name: string; email: string };
-  organizations: { display_name: string; primary_color: string };
+
+  // Joins
+  users: { id: string; full_name: string; email: string; groups?: { name: string } | null } | null;
+  organizations: { display_name: string; primary_color: string } | null;
   groups: { name: string } | null;
   need_categories: { name: string } | null;
+
   approved_by_user?: { full_name: string } | null;
-  claimed_by_user?: { full_name: string; email: string } | null;
+  claimed_by_user?: PersonRef | null;
+  completed_by_user?: PersonRef | null;
 }
 
 const statusConfig: Record<string, { color: string; bg: string; label: string }> = {
@@ -61,6 +89,7 @@ const statusConfig: Record<string, { color: string; bg: string; label: string }>
   APPROVED_OPEN: { color: 'text-green-700', bg: 'bg-green-100', label: 'Open - Needs Help' },
   CLAIMED_IN_PROGRESS: { color: 'text-blue-700', bg: 'bg-blue-100', label: 'In Progress' },
   COMPLETED: { color: 'text-purple-700', bg: 'bg-purple-100', label: 'Completed' },
+  CANCELLED: { color: 'text-gray-700', bg: 'bg-gray-200', label: 'Cancelled' },
   REJECTED: { color: 'text-red-700', bg: 'bg-red-100', label: 'Rejected' },
 };
 
@@ -86,6 +115,21 @@ function getNeedTypeLabel(needType: string) {
   }
 }
 
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return '—';
+  try {
+    return new Date(value).toLocaleString();
+  } catch {
+    return value;
+  }
+}
+
+function formatPersonLine(label: string, person?: PersonRef | null) {
+  if (!person?.full_name) return `${label}: —`;
+  const group = person.groups?.name ? ` • ${person.groups.name}` : '';
+  return `${label}: ${person.full_name}${group}`;
+}
+
 export default function NeedDetailsPage() {
   const { user, loading: authLoading, isAdmin, isImpersonating, organization } = useAuth();
   const [need, setNeed] = useState<Need | null>(null);
@@ -100,23 +144,35 @@ export default function NeedDetailsPage() {
       try {
         const { data, error } = await supabase
           .from('needs')
-          .select(`
+          .select(
+            `
             *,
-            users:requester_user_id (id, full_name, email),
+            users:requester_user_id (
+              id,
+              full_name,
+              email,
+              groups:group_id (name)
+            ),
             organizations (display_name, primary_color),
             groups (name),
             need_categories (name),
             approved_by_user:approved_by (full_name),
-            claimed_by_user:claimed_by (full_name, email)
-          `)
+            claimed_by_user:claimed_by (
+              full_name,
+              email,
+              groups:group_id (name)
+            ),
+            completed_by_user:completed_by (
+              full_name,
+              email,
+              groups:group_id (name)
+            )
+          `
+          )
           .eq('id', needId)
           .single();
 
         if (error) {
-          // Common cases:
-          // - Not found
-          // - RLS blocks access (often manifests as "no rows" when using .single())
-          // PostgREST uses PGRST116 for "No rows" when .single() is used.
           const code = (error as any)?.code;
           const status = (error as any)?.status;
 
@@ -134,15 +190,13 @@ export default function NeedDetailsPage() {
           throw error;
         }
 
-        // ✅ Impersonation guard (UI-only):
-        // While impersonating, hide needs that do not belong to the impersonated user's organization.
-        // This makes impersonation behave like a real user session.
+        // UI-only impersonation guard
         if (isImpersonating && organization?.id && data?.organization_id && data.organization_id !== organization.id) {
           setNeed(null);
           return;
         }
 
-        setNeed(data);
+        setNeed(data as Need);
       } catch (error) {
         console.error('Error fetching need:', error);
         toast.error('Failed to load need details');
@@ -162,11 +216,13 @@ export default function NeedDetailsPage() {
 
     setProcessing(true);
     try {
+      const now = new Date().toISOString();
+
       const { error } = await supabase
         .from('needs')
         .update({
           status: 'CLAIMED_IN_PROGRESS',
-          claimed_at: new Date().toISOString(),
+          claimed_at: now,
           claimed_by: user.id,
         })
         .eq('id', need.id);
@@ -176,10 +232,16 @@ export default function NeedDetailsPage() {
       setNeed({
         ...need,
         status: 'CLAIMED_IN_PROGRESS',
-        claimed_at: new Date().toISOString(),
+        claimed_at: now,
         claimed_by: user.id,
-        claimed_by_user: { full_name: user.full_name || '', email: user.email || '' },
+        claimed_by_user: {
+          full_name: user.full_name || '',
+          email: user.email || '',
+          // we may not know the group from auth context, so leave null here; refresh will show it
+          groups: null,
+        },
       });
+
       toast.success('You have claimed this need! The requester will be notified.');
     } catch (error: any) {
       toast.error(error.message || 'Failed to claim need');
@@ -189,20 +251,39 @@ export default function NeedDetailsPage() {
   };
 
   const handleMarkComplete = async () => {
-    if (!need) return;
+    if (!user || !need) return;
+
+    const note = prompt('Optional: add a completion note (what was done / outcome):') || null;
 
     setProcessing(true);
     try {
+      const now = new Date().toISOString();
+
       const { error } = await supabase
         .from('needs')
         .update({
           status: 'COMPLETED',
+          completed_at: now,
+          completed_by: user.id,
+          completion_note: note,
         })
         .eq('id', need.id);
 
       if (error) throw error;
 
-      setNeed({ ...need, status: 'COMPLETED' });
+      setNeed({
+        ...need,
+        status: 'COMPLETED',
+        completed_at: now,
+        completed_by: user.id,
+        completion_note: note,
+        completed_by_user: {
+          full_name: user.full_name || '',
+          email: user.email || '',
+          groups: null,
+        },
+      });
+
       toast.success('Need marked as completed!');
     } catch (error: any) {
       toast.error(error.message || 'Failed to complete need');
@@ -216,11 +297,13 @@ export default function NeedDetailsPage() {
 
     setProcessing(true);
     try {
+      const now = new Date().toISOString();
+
       const { error } = await supabase
         .from('needs')
         .update({
           status: 'APPROVED_OPEN',
-          approved_at: new Date().toISOString(),
+          approved_at: now,
           approved_by: user.id,
         })
         .eq('id', need.id);
@@ -230,9 +313,11 @@ export default function NeedDetailsPage() {
       setNeed({
         ...need,
         status: 'APPROVED_OPEN',
-        approved_at: new Date().toISOString(),
+        approved_at: now,
+        approved_by: user.id,
         approved_by_user: { full_name: user.full_name || '' },
       });
+
       toast.success('Need approved!');
     } catch (error: any) {
       toast.error(error.message || 'Failed to approve need');
@@ -248,11 +333,13 @@ export default function NeedDetailsPage() {
 
     setProcessing(true);
     try {
+      const now = new Date().toISOString();
+
       const { error } = await supabase
         .from('needs')
         .update({
           status: 'REJECTED',
-          rejected_at: new Date().toISOString(),
+          rejected_at: now,
           rejected_by: user.id,
           rejection_reason: reason || null,
         })
@@ -263,9 +350,11 @@ export default function NeedDetailsPage() {
       setNeed({
         ...need,
         status: 'REJECTED',
-        rejected_at: new Date().toISOString(),
+        rejected_at: now,
+        rejected_by: user.id,
         rejection_reason: reason || null,
       });
+
       toast.success('Need rejected');
     } catch (error: any) {
       toast.error(error.message || 'Failed to reject need');
@@ -299,8 +388,10 @@ export default function NeedDetailsPage() {
 
   const status = statusConfig[need.status] || statusConfig.DRAFT;
   const urgency = urgencyConfig[need.urgency] || urgencyConfig.MEDIUM;
+
   const isOwner = user?.id === need.requester_user_id;
   const isClaimedByMe = need.claimed_by === user?.id;
+
   const canClaim = need.status === 'APPROVED_OPEN' && !isOwner;
   const canComplete = need.status === 'CLAIMED_IN_PROGRESS' && (isClaimedByMe || isOwner || isAdmin);
   const canApprove = need.status === 'PENDING_APPROVAL' && isAdmin;
@@ -319,12 +410,14 @@ export default function NeedDetailsPage() {
           </Button>
         </>
       )}
+
       {canClaim && (
         <Button onClick={handleClaim} loading={processing} size="lg">
           <HandRaisedIcon className="h-5 w-5 mr-2" />
           I Can Help!
         </Button>
       )}
+
       {canComplete && (
         <Button onClick={handleMarkComplete} loading={processing}>
           <CheckCircleIcon className="h-4 w-4 mr-2" />
@@ -339,7 +432,11 @@ export default function NeedDetailsPage() {
       {/* Organization Banner */}
       <div
         className="rounded-lg p-4 mb-6"
-        style={{ backgroundColor: need.organizations?.primary_color ? `${need.organizations.primary_color}20` : '#f3f4f6' }}
+        style={{
+          backgroundColor: need.organizations?.primary_color
+            ? `${need.organizations.primary_color}20`
+            : '#f3f4f6',
+        }}
       >
         <div className="flex items-center gap-3">
           <div
@@ -349,7 +446,7 @@ export default function NeedDetailsPage() {
             {need.organizations?.display_name?.charAt(0) || 'O'}
           </div>
           <div>
-            <p className="font-semibold text-gray-900">{need.organizations?.display_name}</p>
+            <p className="font-semibold text-gray-900">{need.organizations?.display_name || 'Organization'}</p>
             <p className="text-sm text-gray-500">{need.groups?.name || 'No group'}</p>
           </div>
         </div>
@@ -360,9 +457,11 @@ export default function NeedDetailsPage() {
         {/* Title Section */}
         <div className="p-6 border-b border-gray-200">
           <div className="flex items-start justify-between">
-            <div>
+            <div className="w-full">
               <h1 className="text-2xl font-bold text-gray-900 mb-3">{need.title}</h1>
-              <div className="flex items-center gap-2 flex-wrap">
+
+              {/* Status / tags */}
+              <div className="flex items-center gap-2 flex-wrap mb-4">
                 <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${status.bg} ${status.color}`}>
                   {status.label}
                 </span>
@@ -378,6 +477,45 @@ export default function NeedDetailsPage() {
                   </span>
                 )}
               </div>
+
+              {/* Lifecycle Clarity */}
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <div className="flex items-start gap-3">
+                  <UserIcon className="h-5 w-5 text-gray-500 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-semibold text-gray-900 mb-2">Need Lifecycle</p>
+
+                    <div className="space-y-1 text-sm text-gray-700">
+                      <p>{formatPersonLine('Requested by', need.users)}</p>
+                      <p className="text-gray-500">Submitted: {formatDateTime(need.submitted_at || need.created_at)}</p>
+
+                      <div className="h-px bg-gray-200 my-2" />
+
+                      <p>{formatPersonLine('Claimed by', need.claimed_by_user)}</p>
+                      <p className="text-gray-500">Claimed at: {formatDateTime(need.claimed_at)}</p>
+
+                      <div className="h-px bg-gray-200 my-2" />
+
+                      <p>{formatPersonLine('Completed by', need.completed_by_user)}</p>
+                      <p className="text-gray-500">Completed at: {formatDateTime(need.completed_at)}</p>
+
+                      {need.completion_note ? (
+                        <p className="text-gray-700 mt-2">
+                          <span className="font-medium">Completion note:</span> {need.completion_note}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Rejection reason (if rejected) */}
+              {need.status === 'REJECTED' && need.rejection_reason && (
+                <div className="mt-4 bg-red-50 border border-red-100 rounded-lg p-4">
+                  <p className="text-red-800 font-semibold mb-1">Rejected</p>
+                  <p className="text-red-700 text-sm">{need.rejection_reason}</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
