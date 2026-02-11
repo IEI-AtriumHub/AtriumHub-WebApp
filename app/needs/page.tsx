@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import Link from 'next/link';
@@ -18,9 +18,14 @@ interface Need {
   created_at: string;
   requester_user_id: string;
 
-  // Normalize Supabase joins to single object (or null)
-  users: { full_name: string } | null;
+  // Tenant context
   organizations: { display_name: string } | null;
+
+  // Required identity context
+  users: { full_name: string } | null;
+
+  // Reporting/filters context
+  groups: { name: string } | null;
   need_categories: { name: string } | null;
 }
 
@@ -46,15 +51,22 @@ function getNeedTypeLabel(needType: string) {
   }
 }
 
+function normalizeOne<T>(value: any): T | null {
+  if (!value) return null;
+  return Array.isArray(value) ? (value[0] ?? null) : value;
+}
+
 export default function NeedsPage() {
   const { user, organization, loading: authLoading, isSuperAdmin } = useAuth();
   const [needs, setNeeds] = useState<Need[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const supabase = createClientComponentClient();
+
+  const supabase = useMemo(() => createClientComponentClient(), []);
 
   useEffect(() => {
     const fetchNeeds = async () => {
+      setLoading(true);
       try {
         // Require org context for non-superadmin users
         if (!isSuperAdmin && !organization?.id) {
@@ -77,6 +89,7 @@ export default function NeedsPage() {
             requester_user_id,
             users:requester_user_id (full_name),
             organizations (display_name),
+            groups:group_id (name),
             need_categories:category_id (name)
           `
           )
@@ -93,16 +106,17 @@ export default function NeedsPage() {
 
         const normalized: Need[] = (data || []).map((n: any) => ({
           ...n,
-          users: Array.isArray(n.users) ? (n.users[0] ?? null) : (n.users ?? null),
-          organizations: Array.isArray(n.organizations) ? (n.organizations[0] ?? null) : (n.organizations ?? null),
-          need_categories: Array.isArray(n.need_categories) ? (n.need_categories[0] ?? null) : (n.need_categories ?? null),
+          users: normalizeOne<{ full_name: string }>(n.users),
+          organizations: normalizeOne<{ display_name: string }>(n.organizations),
+          groups: normalizeOne<{ name: string }>(n.groups),
+          need_categories: normalizeOne<{ name: string }>(n.need_categories),
         }));
 
         setNeeds(normalized);
         setError(null);
-      } catch (error: any) {
-        console.error('Error fetching needs:', error);
-        setError(error.message || 'Failed to load needs');
+      } catch (err: any) {
+        console.error('Error fetching needs:', err);
+        setError(err?.message || 'Failed to load needs');
         setNeeds([]);
       } finally {
         setLoading(false);
@@ -118,7 +132,7 @@ export default function NeedsPage() {
     return (
       <PageContainer title="Browse Needs" description="View and claim available needs">
         <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
         </div>
       </PageContainer>
     );
@@ -157,65 +171,74 @@ export default function NeedsPage() {
         </div>
       ) : (
         <div className="grid gap-4">
-          {needs.map((need) => (
-            <div key={need.id} className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <h3 className="text-lg font-semibold text-gray-900">{need.title}</h3>
+          {needs.map((need) => {
+            const groupName = need.groups?.name || 'No group';
+            const orgName = need.organizations?.display_name || 'Unknown organization';
 
-                    <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        urgencyColors[need.urgency] || 'bg-gray-100 text-gray-600'
-                      }`}
-                    >
-                      {need.urgency}
-                    </span>
+            return (
+              <div key={need.id} className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2 flex-wrap">
+                      <h3 className="text-lg font-semibold text-gray-900">{need.title}</h3>
 
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                      {getNeedTypeLabel(need.need_type)}
-                    </span>
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          urgencyColors[need.urgency] || 'bg-gray-100 text-gray-600'
+                        }`}
+                      >
+                        {need.urgency}
+                      </span>
+
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                        {getNeedTypeLabel(need.need_type)}
+                      </span>
+
+                      {need.need_categories?.name ? (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          {need.need_categories.name}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    {/* Always show Org + Group + Requested By */}
+                    <p className="text-sm text-gray-600 mb-2">
+                      <span className="font-medium text-gray-800">{orgName}</span>
+                      {' • '}
+                      <span className="font-medium text-gray-800">{groupName}</span>
+                      {' • '}
+                      <span className="text-gray-600">
+                        Requested by <span className="font-medium">{need.users?.full_name || 'Unknown'}</span>
+                      </span>
+                    </p>
+
+                    <p className="text-gray-600 line-clamp-2">{need.description}</p>
                   </div>
-
-                  <p className="text-sm text-gray-500 mb-2">
-                    Posted by {need.users?.full_name || 'Unknown'}
-                    {need.organizations?.display_name ? ` • ${need.organizations.display_name}` : null}
-                  </p>
-
-                  <p className="text-gray-600 line-clamp-2">{need.description}</p>
                 </div>
 
-                <div className="ml-4 flex flex-col items-end gap-2">
-                  {need.need_categories?.name && (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      {need.need_categories.name}
-                    </span>
-                  )}
-                </div>
-              </div>
+                <div className="mt-4 flex justify-between items-center">
+                  <span className="text-sm text-gray-400">{new Date(need.created_at).toLocaleDateString()}</span>
 
-              <div className="mt-4 flex justify-between items-center">
-                <span className="text-sm text-gray-400">{new Date(need.created_at).toLocaleDateString()}</span>
+                  <div className="flex gap-2">
+                    {user?.id !== need.requester_user_id && (
+                      <Link href={`/needs/${need.id}`}>
+                        <Button size="sm">
+                          <HandRaisedIcon className="h-4 w-4 mr-1" />
+                          I Can Help
+                        </Button>
+                      </Link>
+                    )}
 
-                <div className="flex gap-2">
-                  {user?.id !== need.requester_user_id && (
                     <Link href={`/needs/${need.id}`}>
-                      <Button size="sm">
-                        <HandRaisedIcon className="h-4 w-4 mr-1" />
-                        I Can Help
+                      <Button variant="outline" size="sm">
+                        View Details
                       </Button>
                     </Link>
-                  )}
-
-                  <Link href={`/needs/${need.id}`}>
-                    <Button variant="outline" size="sm">
-                      View Details
-                    </Button>
-                  </Link>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </PageContainer>
