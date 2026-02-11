@@ -8,6 +8,12 @@ import Button from '@/components/ui/Button';
 import PageContainer from '@/components/layout/PageContainer';
 import { HandRaisedIcon } from '@heroicons/react/24/outline';
 
+interface PersonWithGroup {
+  full_name: string;
+  email?: string | null;
+  groups?: { name: string } | null;
+}
+
 interface Need {
   id: string;
   title: string;
@@ -20,11 +26,12 @@ interface Need {
   requester_user_id: string;
   claimed_by: string | null;
 
-  // Supabase joins can come back as arrays; we normalize to single objects (or null)
-  requester: { full_name: string; email?: string | null } | null;
-  helper: { full_name: string; email?: string | null } | null;
+  // Joins (normalize arrays -> single object)
+  requester: PersonWithGroup | null;
+  helper: PersonWithGroup | null;
 
   organizations: { display_name: string } | null;
+  groups: { name: string } | null; // need.group_id -> groups(name)
   need_categories: { name: string } | null;
 }
 
@@ -47,6 +54,24 @@ function getNeedTypeLabel(needType: string) {
       return '🙋 Request';
     default:
       return needType;
+  }
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return '—';
+  try {
+    return new Date(value).toLocaleString();
+  } catch {
+    return '—';
+  }
+}
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return '—';
+  try {
+    return new Date(value).toLocaleDateString();
+  } catch {
+    return '—';
   }
 }
 
@@ -86,9 +111,18 @@ export default function NeedsInProgressPage() {
             claimed_at,
             requester_user_id,
             claimed_by,
-            requester:requester_user_id (full_name, email),
-            helper:claimed_by (full_name, email),
+            requester:requester_user_id (
+              full_name,
+              email,
+              groups (name)
+            ),
+            helper:claimed_by (
+              full_name,
+              email,
+              groups (name)
+            ),
             organizations (display_name),
+            groups (name),
             need_categories:category_id (name)
           `
           )
@@ -109,6 +143,7 @@ export default function NeedsInProgressPage() {
           requester: Array.isArray(n.requester) ? (n.requester[0] ?? null) : (n.requester ?? null),
           helper: Array.isArray(n.helper) ? (n.helper[0] ?? null) : (n.helper ?? null),
           organizations: Array.isArray(n.organizations) ? (n.organizations[0] ?? null) : (n.organizations ?? null),
+          groups: Array.isArray(n.groups) ? (n.groups[0] ?? null) : (n.groups ?? null),
           need_categories: Array.isArray(n.need_categories) ? (n.need_categories[0] ?? null) : (n.need_categories ?? null),
         }));
 
@@ -175,71 +210,90 @@ export default function NeedsInProgressPage() {
         </div>
       ) : (
         <div className="grid gap-4">
-          {needs.map((need) => (
-            <div key={need.id} className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2 flex-wrap">
-                    <h3 className="text-lg font-semibold text-gray-900">{need.title}</h3>
+          {needs.map((need) => {
+            const orgName = need.organizations?.display_name || 'Organization';
+            const needGroupName = need.groups?.name || 'No group';
 
-                    <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        urgencyColors[need.urgency] || 'bg-gray-100 text-gray-600'
-                      }`}
-                    >
-                      {need.urgency}
-                    </span>
+            const requesterName = need.requester?.full_name || 'Unknown';
+            const requesterEmail = need.requester?.email || null;
+            const requesterGroup = need.requester?.groups?.name || 'No group';
 
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                      {getNeedTypeLabel(need.need_type)}
-                    </span>
+            const helperName = need.helper?.full_name || 'Unassigned';
+            const helperEmail = need.helper?.email || null;
+            const helperGroup = need.helper?.groups?.name || 'No group';
 
-                    {need.need_categories?.name && (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        {need.need_categories.name}
+            return (
+              <div key={need.id} className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2 flex-wrap">
+                      <h3 className="text-lg font-semibold text-gray-900">{need.title}</h3>
+
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          urgencyColors[need.urgency] || 'bg-gray-100 text-gray-600'
+                        }`}
+                      >
+                        {need.urgency}
                       </span>
-                    )}
+
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                        {getNeedTypeLabel(need.need_type)}
+                      </span>
+
+                      {need.need_categories?.name && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          {need.need_categories.name}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Org + Need Group + timestamps */}
+                    <p className="text-sm text-gray-500 mb-2">
+                      {orgName} • {needGroupName} • Claimed {formatDateTime(need.claimed_at)} • Created {formatDate(need.created_at)}
+                    </p>
+
+                    <p className="text-gray-600 line-clamp-2">{need.description}</p>
+
+                    {/* People + their groups */}
+                    <div className="mt-3 text-sm text-gray-700 space-y-1">
+                      <div>
+                        <span className="text-gray-500">Requested by:</span>{' '}
+                        <span className="font-medium">{requesterName}</span>
+                        {requesterEmail ? <span className="text-gray-500"> ({requesterEmail})</span> : null}
+                        <span className="text-gray-500"> • </span>
+                        <span className="text-gray-500">Group:</span>{' '}
+                        <span className="font-medium">{requesterGroup}</span>
+                      </div>
+
+                      <div>
+                        <span className="text-gray-500">Helping:</span>{' '}
+                        <span className="font-medium">{helperName}</span>
+                        {helperEmail ? <span className="text-gray-500"> ({helperEmail})</span> : null}
+                        <span className="text-gray-500"> • </span>
+                        <span className="text-gray-500">Group:</span>{' '}
+                        <span className="font-medium">{helperGroup}</span>
+                      </div>
+                    </div>
                   </div>
 
-                  <p className="text-sm text-gray-500 mb-2">
-                    {need.organizations?.display_name ? `${need.organizations.display_name} • ` : ''}
-                    Claimed {need.claimed_at ? new Date(need.claimed_at).toLocaleString() : '—'}
-                  </p>
-
-                  <p className="text-gray-600 line-clamp-2">{need.description}</p>
-
-                  <div className="mt-3 text-sm text-gray-700 space-y-1">
-                    <div>
-                      <span className="text-gray-500">Requested by:</span>{' '}
-                      <span className="font-medium">{need.requester?.full_name || 'Unknown'}</span>
-                      {need.requester?.email ? <span className="text-gray-500"> ({need.requester.email})</span> : null}
-                    </div>
-
-                    <div>
-                      <span className="text-gray-500">Helping:</span>{' '}
-                      <span className="font-medium">{need.helper?.full_name || 'Unassigned'}</span>
-                      {need.helper?.email ? <span className="text-gray-500"> ({need.helper.email})</span> : null}
-                    </div>
+                  <div className="ml-4 flex flex-col items-end gap-2">
+                    <Link href={`/needs/${need.id}`}>
+                      <Button variant="outline" size="sm">
+                        View Details
+                      </Button>
+                    </Link>
                   </div>
                 </div>
 
-                <div className="ml-4 flex flex-col items-end gap-2">
+                <div className="mt-4 flex justify-end">
                   <Link href={`/needs/${need.id}`}>
-                    <Button variant="outline" size="sm">
-                      View Details
-                    </Button>
+                    <Button size="sm">Open</Button>
                   </Link>
                 </div>
               </div>
-
-              <div className="mt-4 flex justify-between items-center">
-                <span className="text-sm text-gray-400">Created {new Date(need.created_at).toLocaleDateString()}</span>
-                <Link href={`/needs/${need.id}`}>
-                  <Button size="sm">Open</Button>
-                </Link>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </PageContainer>
