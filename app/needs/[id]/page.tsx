@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useParams } from 'next/navigation';
@@ -16,14 +16,7 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   HandRaisedIcon,
-  UserIcon,
 } from '@heroicons/react/24/outline';
-
-interface PersonRef {
-  full_name: string;
-  email?: string;
-  groups?: { name: string } | null;
-}
 
 interface Need {
   id: string;
@@ -32,7 +25,6 @@ interface Need {
   status: string;
   need_type: string;
   urgency: string;
-
   created_at: string;
   submitted_at: string;
 
@@ -45,11 +37,13 @@ interface Need {
 
   claimed_at: string | null;
   claimed_by: string | null;
-  claim_note?: string | null;
+  claim_note: string | null;
 
   completed_at: string | null;
   completed_by: string | null;
   completion_note: string | null;
+  actual_hours_worked: number | null;
+  actual_amount_provided: number | null;
 
   cancelled_at: string | null;
   cancelled_by: string | null;
@@ -72,15 +66,16 @@ interface Need {
   financial_purpose: string | null;
   financial_due_date: string | null;
 
-  // Joins
-  users: { id: string; full_name: string; email: string; groups?: { name: string } | null } | null;
+  users: { id: string; full_name: string; email: string } | null;
   organizations: { display_name: string; primary_color: string } | null;
   groups: { name: string } | null;
   need_categories: { name: string } | null;
 
   approved_by_user?: { full_name: string } | null;
-  claimed_by_user?: PersonRef | null;
-  completed_by_user?: PersonRef | null;
+  rejected_by_user?: { full_name: string } | null;
+  claimed_by_user?: { full_name: string; email: string } | null;
+  completed_by_user?: { full_name: string; email: string } | null;
+  cancelled_by_user?: { full_name: string } | null;
 }
 
 const statusConfig: Record<string, { color: string; bg: string; label: string }> = {
@@ -116,18 +111,16 @@ function getNeedTypeLabel(needType: string) {
 }
 
 function formatDateTime(value: string | null | undefined) {
-  if (!value) return '—';
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
-    return value;
-  }
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString();
 }
 
-function formatPersonLine(label: string, person?: PersonRef | null) {
-  if (!person?.full_name) return `${label}: —`;
-  const group = person.groups?.name ? ` • ${person.groups.name}` : '';
-  return `${label}: ${person.full_name}${group}`;
+function normalizeJoin<T>(v: any): T | null {
+  if (!v) return null;
+  if (Array.isArray(v)) return (v[0] ?? null) as T | null;
+  return v as T;
 }
 
 export default function NeedDetailsPage() {
@@ -147,26 +140,15 @@ export default function NeedDetailsPage() {
           .select(
             `
             *,
-            users:requester_user_id (
-              id,
-              full_name,
-              email,
-              groups:group_id (name)
-            ),
+            users:requester_user_id (id, full_name, email),
             organizations (display_name, primary_color),
             groups (name),
             need_categories (name),
             approved_by_user:approved_by (full_name),
-            claimed_by_user:claimed_by (
-              full_name,
-              email,
-              groups:group_id (name)
-            ),
-            completed_by_user:completed_by (
-              full_name,
-              email,
-              groups:group_id (name)
-            )
+            rejected_by_user:rejected_by (full_name),
+            claimed_by_user:claimed_by (full_name, email),
+            completed_by_user:completed_by (full_name, email),
+            cancelled_by_user:cancelled_by (full_name)
           `
           )
           .eq('id', needId)
@@ -196,7 +178,20 @@ export default function NeedDetailsPage() {
           return;
         }
 
-        setNeed(data as Need);
+        const normalized: Need = {
+          ...(data as any),
+          users: normalizeJoin<Need['users']>(data.users),
+          organizations: normalizeJoin<Need['organizations']>(data.organizations),
+          groups: normalizeJoin<Need['groups']>(data.groups),
+          need_categories: normalizeJoin<Need['need_categories']>(data.need_categories),
+          approved_by_user: normalizeJoin<Need['approved_by_user']>((data as any).approved_by_user),
+          rejected_by_user: normalizeJoin<Need['rejected_by_user']>((data as any).rejected_by_user),
+          claimed_by_user: normalizeJoin<Need['claimed_by_user']>((data as any).claimed_by_user),
+          completed_by_user: normalizeJoin<Need['completed_by_user']>((data as any).completed_by_user),
+          cancelled_by_user: normalizeJoin<Need['cancelled_by_user']>((data as any).cancelled_by_user),
+        };
+
+        setNeed(normalized);
       } catch (error) {
         console.error('Error fetching need:', error);
         toast.error('Failed to load need details');
@@ -214,16 +209,18 @@ export default function NeedDetailsPage() {
   const handleClaim = async () => {
     if (!user || !need) return;
 
+    const claimNote = prompt('Optional: add a note for the requester (e.g., when you can help):') || null;
+
     setProcessing(true);
     try {
       const now = new Date().toISOString();
-
       const { error } = await supabase
         .from('needs')
         .update({
           status: 'CLAIMED_IN_PROGRESS',
           claimed_at: now,
           claimed_by: user.id,
+          claim_note: claimNote,
         })
         .eq('id', need.id);
 
@@ -234,12 +231,8 @@ export default function NeedDetailsPage() {
         status: 'CLAIMED_IN_PROGRESS',
         claimed_at: now,
         claimed_by: user.id,
-        claimed_by_user: {
-          full_name: user.full_name || '',
-          email: user.email || '',
-          // we may not know the group from auth context, so leave null here; refresh will show it
-          groups: null,
-        },
+        claim_note: claimNote,
+        claimed_by_user: { full_name: user.full_name || '', email: user.email || '' },
       });
 
       toast.success('You have claimed this need! The requester will be notified.');
@@ -251,21 +244,20 @@ export default function NeedDetailsPage() {
   };
 
   const handleMarkComplete = async () => {
-    if (!user || !need) return;
+    if (!need || !user) return;
 
-    const note = prompt('Optional: add a completion note (what was done / outcome):') || null;
+    const completionNote = prompt('Optional: add a completion note (what was done / outcome):') || null;
 
     setProcessing(true);
     try {
       const now = new Date().toISOString();
-
       const { error } = await supabase
         .from('needs')
         .update({
           status: 'COMPLETED',
           completed_at: now,
           completed_by: user.id,
-          completion_note: note,
+          completion_note: completionNote,
         })
         .eq('id', need.id);
 
@@ -276,12 +268,8 @@ export default function NeedDetailsPage() {
         status: 'COMPLETED',
         completed_at: now,
         completed_by: user.id,
-        completion_note: note,
-        completed_by_user: {
-          full_name: user.full_name || '',
-          email: user.email || '',
-          groups: null,
-        },
+        completion_note: completionNote,
+        completed_by_user: { full_name: user.full_name || '', email: user.email || '' },
       });
 
       toast.success('Need marked as completed!');
@@ -298,7 +286,6 @@ export default function NeedDetailsPage() {
     setProcessing(true);
     try {
       const now = new Date().toISOString();
-
       const { error } = await supabase
         .from('needs')
         .update({
@@ -329,19 +316,18 @@ export default function NeedDetailsPage() {
   const handleReject = async () => {
     if (!user || !need) return;
 
-    const reason = prompt('Please provide a reason for rejection (optional):');
+    const reason = prompt('Please provide a reason for rejection (optional):') || null;
 
     setProcessing(true);
     try {
       const now = new Date().toISOString();
-
       const { error } = await supabase
         .from('needs')
         .update({
           status: 'REJECTED',
           rejected_at: now,
           rejected_by: user.id,
-          rejection_reason: reason || null,
+          rejection_reason: reason,
         })
         .eq('id', need.id);
 
@@ -352,7 +338,8 @@ export default function NeedDetailsPage() {
         status: 'REJECTED',
         rejected_at: now,
         rejected_by: user.id,
-        rejection_reason: reason || null,
+        rejection_reason: reason,
+        rejected_by_user: { full_name: user.full_name || '' },
       });
 
       toast.success('Need rejected');
@@ -388,13 +375,69 @@ export default function NeedDetailsPage() {
 
   const status = statusConfig[need.status] || statusConfig.DRAFT;
   const urgency = urgencyConfig[need.urgency] || urgencyConfig.MEDIUM;
-
   const isOwner = user?.id === need.requester_user_id;
   const isClaimedByMe = need.claimed_by === user?.id;
-
   const canClaim = need.status === 'APPROVED_OPEN' && !isOwner;
   const canComplete = need.status === 'CLAIMED_IN_PROGRESS' && (isClaimedByMe || isOwner || isAdmin);
   const canApprove = need.status === 'PENDING_APPROVAL' && isAdmin;
+
+  const lifecycle = useMemo(() => {
+    const items: Array<{ title: string; when: string | null; who?: string | null; note?: string | null }> = [];
+
+    items.push({
+      title: 'Requested',
+      when: need.submitted_at || need.created_at,
+      who: need.users?.full_name || 'Unknown',
+      note: null,
+    });
+
+    if (need.approved_at) {
+      items.push({
+        title: 'Approved',
+        when: need.approved_at,
+        who: need.approved_by_user?.full_name || 'Admin',
+        note: null,
+      });
+    }
+
+    if (need.rejected_at) {
+      items.push({
+        title: 'Rejected',
+        when: need.rejected_at,
+        who: need.rejected_by_user?.full_name || 'Admin',
+        note: need.rejection_reason,
+      });
+    }
+
+    if (need.cancelled_at) {
+      items.push({
+        title: 'Cancelled',
+        when: need.cancelled_at,
+        who: need.cancelled_by_user?.full_name || 'Admin',
+        note: need.cancellation_reason,
+      });
+    }
+
+    if (need.claimed_at) {
+      items.push({
+        title: 'Claimed / In Progress',
+        when: need.claimed_at,
+        who: need.claimed_by_user?.full_name || 'Volunteer',
+        note: need.claim_note,
+      });
+    }
+
+    if (need.completed_at) {
+      items.push({
+        title: 'Completed',
+        when: need.completed_at,
+        who: need.completed_by_user?.full_name || 'Volunteer',
+        note: need.completion_note,
+      });
+    }
+
+    return items;
+  }, [need]);
 
   const actionButtons = (
     <div className="flex gap-2">
@@ -410,14 +453,12 @@ export default function NeedDetailsPage() {
           </Button>
         </>
       )}
-
       {canClaim && (
         <Button onClick={handleClaim} loading={processing} size="lg">
           <HandRaisedIcon className="h-5 w-5 mr-2" />
           I Can Help!
         </Button>
       )}
-
       {canComplete && (
         <Button onClick={handleMarkComplete} loading={processing}>
           <CheckCircleIcon className="h-4 w-4 mr-2" />
@@ -433,9 +474,7 @@ export default function NeedDetailsPage() {
       <div
         className="rounded-lg p-4 mb-6"
         style={{
-          backgroundColor: need.organizations?.primary_color
-            ? `${need.organizations.primary_color}20`
-            : '#f3f4f6',
+          backgroundColor: need.organizations?.primary_color ? `${need.organizations.primary_color}20` : '#f3f4f6',
         }}
       >
         <div className="flex items-center gap-3">
@@ -460,8 +499,7 @@ export default function NeedDetailsPage() {
             <div className="w-full">
               <h1 className="text-2xl font-bold text-gray-900 mb-3">{need.title}</h1>
 
-              {/* Status / tags */}
-              <div className="flex items-center gap-2 flex-wrap mb-4">
+              <div className="flex items-center gap-2 flex-wrap mb-3">
                 <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${status.bg} ${status.color}`}>
                   {status.label}
                 </span>
@@ -478,44 +516,10 @@ export default function NeedDetailsPage() {
                 )}
               </div>
 
-              {/* Lifecycle Clarity */}
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <div className="flex items-start gap-3">
-                  <UserIcon className="h-5 w-5 text-gray-500 mt-0.5" />
-                  <div className="flex-1">
-                    <p className="font-semibold text-gray-900 mb-2">Need Lifecycle</p>
-
-                    <div className="space-y-1 text-sm text-gray-700">
-                      <p>{formatPersonLine('Requested by', need.users)}</p>
-                      <p className="text-gray-500">Submitted: {formatDateTime(need.submitted_at || need.created_at)}</p>
-
-                      <div className="h-px bg-gray-200 my-2" />
-
-                      <p>{formatPersonLine('Claimed by', need.claimed_by_user)}</p>
-                      <p className="text-gray-500">Claimed at: {formatDateTime(need.claimed_at)}</p>
-
-                      <div className="h-px bg-gray-200 my-2" />
-
-                      <p>{formatPersonLine('Completed by', need.completed_by_user)}</p>
-                      <p className="text-gray-500">Completed at: {formatDateTime(need.completed_at)}</p>
-
-                      {need.completion_note ? (
-                        <p className="text-gray-700 mt-2">
-                          <span className="font-medium">Completion note:</span> {need.completion_note}
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Rejection reason (if rejected) */}
-              {need.status === 'REJECTED' && need.rejection_reason && (
-                <div className="mt-4 bg-red-50 border border-red-100 rounded-lg p-4">
-                  <p className="text-red-800 font-semibold mb-1">Rejected</p>
-                  <p className="text-red-700 text-sm">{need.rejection_reason}</p>
-                </div>
-              )}
+              <p className="text-sm text-gray-600">
+                Requested by <span className="font-medium">{need.users?.full_name || 'Unknown'}</span>
+                {need.users?.email ? <span className="text-gray-400"> • {need.users.email}</span> : null}
+              </p>
             </div>
           </div>
         </div>
@@ -557,6 +561,33 @@ export default function NeedDetailsPage() {
             </div>
           </div>
         )}
+
+        {/* Lifecycle Timeline */}
+        <div className="p-6 border-b border-gray-200">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Lifecycle</h2>
+          <div className="space-y-4">
+            {lifecycle.map((item, idx) => (
+              <div key={`${item.title}-${idx}`} className="flex gap-4">
+                <div className="flex flex-col items-center">
+                  <div className="h-3 w-3 rounded-full bg-gray-400 mt-1" />
+                  {idx !== lifecycle.length - 1 && <div className="w-px flex-1 bg-gray-200 mt-1" />}
+                </div>
+                <div className="flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-medium text-gray-900">{item.title}</p>
+                    {item.when && <p className="text-sm text-gray-500">• {formatDateTime(item.when)}</p>}
+                  </div>
+                  {item.who && <p className="text-sm text-gray-700 mt-1">By: {item.who}</p>}
+                  {item.note && (
+                    <div className="mt-2 bg-gray-50 border border-gray-200 rounded-md p-3">
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{item.note}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
 
         {/* Description */}
         <div className="p-6 border-b border-gray-200">
