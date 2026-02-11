@@ -350,38 +350,9 @@ export default function NeedDetailsPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <PageContainer>
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        </div>
-      </PageContainer>
-    );
-  }
-
-  if (!need) {
-    return (
-      <PageContainer title="Need Not Found">
-        <div className="bg-white rounded-lg shadow p-8 text-center">
-          <p className="text-gray-500">This need could not be found (or you don&apos;t have access to it).</p>
-          <Link href="/needs" className="mt-4 inline-block">
-            <Button>Back to Browse Needs</Button>
-          </Link>
-        </div>
-      </PageContainer>
-    );
-  }
-
-  const status = statusConfig[need.status] || statusConfig.DRAFT;
-  const urgency = urgencyConfig[need.urgency] || urgencyConfig.MEDIUM;
-  const isOwner = user?.id === need.requester_user_id;
-  const isClaimedByMe = need.claimed_by === user?.id;
-  const canClaim = need.status === 'APPROVED_OPEN' && !isOwner;
-  const canComplete = need.status === 'CLAIMED_IN_PROGRESS' && (isClaimedByMe || isOwner || isAdmin);
-  const canApprove = need.status === 'PENDING_APPROVAL' && isAdmin;
-
+  // ✅ MUST be above any conditional returns (Rules of Hooks)
   const lifecycle = useMemo(() => {
+    if (!need) return [];
     const items: Array<{ title: string; when: string | null; who?: string | null; note?: string | null }> = [];
 
     items.push({
@@ -438,6 +409,37 @@ export default function NeedDetailsPage() {
 
     return items;
   }, [need]);
+
+  if (loading) {
+    return (
+      <PageContainer>
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      </PageContainer>
+    );
+  }
+
+  if (!need) {
+    return (
+      <PageContainer title="Need Not Found">
+        <div className="bg-white rounded-lg shadow p-8 text-center">
+          <p className="text-gray-500">This need could not be found (or you don&apos;t have access to it).</p>
+          <Link href="/needs" className="mt-4 inline-block">
+            <Button>Back to Browse Needs</Button>
+          </Link>
+        </div>
+      </PageContainer>
+    );
+  }
+
+  const status = statusConfig[need.status] || statusConfig.DRAFT;
+  const urgency = urgencyConfig[need.urgency] || urgencyConfig.MEDIUM;
+  const isOwner = user?.id === need.requester_user_id;
+  const isClaimedByMe = need.claimed_by === user?.id;
+  const canClaim = need.status === 'APPROVED_OPEN' && !isOwner;
+  const canComplete = need.status === 'CLAIMED_IN_PROGRESS' && (isClaimedByMe || isOwner || isAdmin);
+  const canApprove = need.status === 'PENDING_APPROVAL' && isAdmin;
 
   const actionButtons = (
     <div className="flex gap-2">
