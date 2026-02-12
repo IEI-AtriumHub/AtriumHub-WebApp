@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 
-// Healthcheck so we can verify the route is deployed and reachable in prod
+// Healthcheck: confirms route is deployed and reachable
 export async function GET() {
   return NextResponse.json({
     ok: true,
@@ -10,36 +12,43 @@ export async function GET() {
   });
 }
 
+// Creates a Supabase client that reads the logged-in user from cookies (server-side)
+function createCookieAuthedSupabaseClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const cookieStore = cookies();
+
+  return createServerClient(supabaseUrl, anonKey, {
+    cookies: {
+      get(name: string) {
+        return cookieStore.get(name)?.value;
+      },
+      set(name: string, value: string, options: any) {
+        cookieStore.set({ name, value, ...options });
+      },
+      remove(name: string, options: any) {
+        cookieStore.set({ name, value: "", ...options, maxAge: 0 });
+      },
+    },
+  });
+}
+
 export async function POST(req: Request) {
   try {
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Missing auth token" }, { status: 401 });
-    }
-
-    const token = authHeader.replace("Bearer ", "");
-
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-    // Validate caller session (user-scoped)
-    const userClient = createClient(supabaseUrl, anonKey, {
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    });
+    // 1) Identify caller from cookie session (NO bearer token needed)
+    const userClient = createCookieAuthedSupabaseClient();
+    const { data: userData, error: userErr } = await userClient.auth.getUser();
 
-    const { data: userData, error: userError } = await userClient.auth.getUser();
-    if (userError || !userData?.user) {
+    if (userErr || !userData?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const userId = userData.user.id;
 
-    // SuperAdmin check
+    // 2) SuperAdmin check
     const { data: adminRow, error: adminErr } = await userClient
       .from("platform_admins")
       .select("user_id")
@@ -57,7 +66,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Parse request body
+    // 3) Parse & validate body
     const body = await req.json();
     const { orgId, patch } = body ?? {};
 
@@ -69,9 +78,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid patch payload" }, { status: 400 });
     }
 
-    // Protect critical fields from mutation
-    const protectedFields = ["id", "created_at"];
-    for (const field of protectedFields) {
+    // Protect critical fields
+    for (const field of ["id", "created_at"]) {
       if (field in patch) {
         return NextResponse.json(
           { error: `Cannot modify protected field: ${field}` },
@@ -80,23 +88,23 @@ export async function POST(req: Request) {
       }
     }
 
-    // Service-role mutation (server-only)
+    // 4) Execute update with service role (server-only)
     const adminClient = createClient(supabaseUrl, serviceKey);
 
-    const { data: updatedOrg, error: updateError } = await adminClient
+    const { data: updatedOrg, error: updateErr } = await adminClient
       .from("organizations")
       .update(patch)
       .eq("id", orgId)
       .select("*")
       .single();
 
-    if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 400 });
+    if (updateErr) {
+      return NextResponse.json({ error: updateErr.message }, { status: 400 });
     }
 
     return NextResponse.json({ organization: updatedOrg });
-  } catch (err: any) {
-    console.error("Admin org update error:", err);
+  } catch (e: any) {
+    console.error("Admin org update error:", e);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
