@@ -69,7 +69,8 @@ export default function AdminPage() {
   const supabase = createClientComponentClient();
 
   useEffect(() => {
-    if (!authLoading && !isAdmin) {
+    // ✅ CHANGE: allow SuperAdmin to access /admin as well
+    if (!authLoading && !(isAdmin || isSuperAdmin)) {
       window.location.href = '/';
       return;
     }
@@ -217,7 +218,7 @@ export default function AdminPage() {
 
   const handleRejectNeed = async (needId: string) => {
     const reason = prompt('Please provide a reason for rejection (optional):');
-    
+
     setProcessingId(needId);
     try {
       const { error } = await supabase
@@ -247,7 +248,7 @@ export default function AdminPage() {
     try {
       const { error } = await supabase
         .from('users')
-        .update({ 
+        .update({
           status: 'APPROVED',
           approved_by: user?.id,
           approved_at: new Date().toISOString(),
@@ -329,7 +330,7 @@ export default function AdminPage() {
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center">
               <div className="p-2 bg-green-100 rounded-lg">
-                <DocumentTextIcon className="h-6 w-6 text-green-600" />
+                <DocumentTextIcon className="h-6 w-6 text-green-600 mb-3" />
               </div>
               <div className="ml-4">
                 <p className="text-sm text-gray-500">Active Needs</p>
