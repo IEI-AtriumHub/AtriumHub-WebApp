@@ -18,16 +18,16 @@ async function createCookieAuthedSupabaseClient() {
   // ✅ Next 16: cookies() is async in route handlers
   const cookieStore = await cookies();
 
+  // ✅ Correct cookie adapter for @supabase/ssr: use getAll/setAll
   return createServerClient(supabaseUrl, anonKey, {
     cookies: {
-      get(name: string) {
-        return cookieStore.get(name)?.value;
+      getAll() {
+        return cookieStore.getAll();
       },
-      set(name: string, value: string, options: any) {
-        cookieStore.set({ name, value, ...options });
-      },
-      remove(name: string, options: any) {
-        cookieStore.set({ name, value: "", ...options, maxAge: 0 });
+      setAll(cookiesToSet) {
+        for (const { name, value, options } of cookiesToSet) {
+          cookieStore.set({ name, value, ...options });
+        }
       },
     },
   });
