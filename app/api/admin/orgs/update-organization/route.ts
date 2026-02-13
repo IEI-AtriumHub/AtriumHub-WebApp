@@ -1,6 +1,4 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 
 export async function GET() {
@@ -11,60 +9,49 @@ export async function GET() {
   });
 }
 
-/**
- * Creates a Supabase SSR client authenticated via the user's cookie session.
- * IMPORTANT: In Next.js route handlers, use getAll/setAll (not get/set/remove)
- * so Supabase can properly read and refresh the session cookies.
- */
-async function createCookieAuthedSupabaseClient() {
-  const cookieStore = await cookies();
-
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options);
-          });
-        },
-      },
-    }
-  );
+function getBearerToken(req: Request): string | null {
+  const auth = req.headers.get("authorization") || "";
+  const m = auth.match(/^Bearer\s+(.+)$/i);
+  return m?.[1] ?? null;
 }
 
 export async function POST(req: Request) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-    // 1) Identify caller from cookie session (no Bearer token)
-    const userClient = await createCookieAuthedSupabaseClient();
-    const { data: userData, error: userErr } = await userClient.auth.getUser();
-
-    if (userErr || !userData?.user) {
-      // Debug payload (safe-ish): shows cookie names only, not values
-      const cookieStore = await cookies();
-      const cookieNames = cookieStore.getAll().map((c) => c.name);
-
+    // 1) Require a Bearer token (do NOT rely on cookies here)
+    const token = getBearerToken(req);
+    if (!token) {
       return NextResponse.json(
-        {
-          error: "Unauthorized",
-          cookieNames,
-          hasSbCookie: cookieNames.some((n) => n.startsWith("sb-")),
-        },
+        { error: "Unauthorized: missing Bearer token" },
+        { status: 401 }
+      );
+    }
+
+    // 2) Validate token -> userId
+    const userAuthClient = createClient(supabaseUrl, anonKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    const { data: userData, error: userErr } = await userAuthClient.auth.getUser(token);
+    if (userErr || !userData?.user) {
+      return NextResponse.json(
+        { error: "Unauthorized: invalid session token" },
         { status: 401 }
       );
     }
 
     const userId = userData.user.id;
 
-    // 2) SuperAdmin allowlist check
-    const { data: adminRow, error: adminErr } = await userClient
+    // 3) Service role client (server-only) for admin checks + update
+    const adminClient = createClient(supabaseUrl, serviceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    // 4) SuperAdmin allowlist check (service role reads platform_admins safely)
+    const { data: adminRow, error: adminErr } = await adminClient
       .from("platform_admins")
       .select("user_id")
       .eq("user_id", userId)
@@ -73,7 +60,6 @@ export async function POST(req: Request) {
     if (adminErr) {
       return NextResponse.json({ error: adminErr.message }, { status: 400 });
     }
-
     if (!adminRow) {
       return NextResponse.json(
         { error: "Forbidden — SuperAdmin required" },
@@ -81,7 +67,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3) Parse body
+    // 5) Parse body
     const body = await req.json().catch(() => null);
     const orgId = body?.orgId as string | undefined;
     const patch = body?.patch as Record<string, any> | undefined;
@@ -103,9 +89,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 4) Execute update with service role (server-only)
-    const adminClient = createClient(supabaseUrl, serviceKey);
-
+    // 6) Execute update
     const { data: updatedOrg, error: updateErr } = await adminClient
       .from("organizations")
       .update(patch)
