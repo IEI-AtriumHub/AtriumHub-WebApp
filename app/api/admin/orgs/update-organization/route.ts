@@ -11,26 +11,30 @@ export async function GET() {
   });
 }
 
+/**
+ * Creates a Supabase SSR client authenticated via the user's cookie session.
+ * IMPORTANT: In Next.js route handlers, use getAll/setAll (not get/set/remove)
+ * so Supabase can properly read and refresh the session cookies.
+ */
 async function createCookieAuthedSupabaseClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-  // ✅ Next 16: cookies() is async in route handlers
   const cookieStore = await cookies();
 
-  // ✅ Correct cookie adapter for @supabase/ssr: use getAll/setAll
-  return createServerClient(supabaseUrl, anonKey, {
-    cookies: {
-      getAll() {
-        return cookieStore.getAll();
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options);
+          });
+        },
       },
-      setAll(cookiesToSet) {
-        for (const { name, value, options } of cookiesToSet) {
-          cookieStore.set({ name, value, ...options });
-        }
-      },
-    },
-  });
+    }
+  );
 }
 
 export async function POST(req: Request) {
@@ -43,7 +47,7 @@ export async function POST(req: Request) {
     const { data: userData, error: userErr } = await userClient.auth.getUser();
 
     if (userErr || !userData?.user) {
-      // 🔎 Debug: see whether the API route is receiving the Supabase auth cookies
+      // Debug payload (safe-ish): shows cookie names only, not values
       const cookieStore = await cookies();
       const cookieNames = cookieStore.getAll().map((c) => c.name);
 
@@ -83,16 +87,10 @@ export async function POST(req: Request) {
     const patch = body?.patch as Record<string, any> | undefined;
 
     if (!orgId || typeof orgId !== "string") {
-      return NextResponse.json(
-        { error: "Invalid or missing orgId" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid or missing orgId" }, { status: 400 });
     }
     if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
-      return NextResponse.json(
-        { error: "Invalid patch payload" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid patch payload" }, { status: 400 });
     }
 
     // Protect critical fields
