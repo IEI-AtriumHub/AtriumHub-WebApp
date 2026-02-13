@@ -17,6 +17,7 @@ export default function TestOrgEndpoint() {
 
       const res = await fetch("/api/admin/orgs/update-organization", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orgId, patch }),
       });
