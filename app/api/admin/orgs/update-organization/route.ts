@@ -3,7 +3,6 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 
-// Healthcheck: confirms route is deployed and reachable
 export async function GET() {
   return NextResponse.json({
     ok: true,
@@ -12,11 +11,12 @@ export async function GET() {
   });
 }
 
-// Creates a Supabase client that reads the logged-in user from cookies (server-side)
-function createCookieAuthedSupabaseClient() {
+async function createCookieAuthedSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  const cookieStore = cookies();
+
+  // ✅ Next 16: cookies() is async in route handlers
+  const cookieStore = await cookies();
 
   return createServerClient(supabaseUrl, anonKey, {
     cookies: {
@@ -38,8 +38,8 @@ export async function POST(req: Request) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-    // 1) Identify caller from cookie session (NO bearer token needed)
-    const userClient = createCookieAuthedSupabaseClient();
+    // 1) Identify caller from cookie session (no Bearer token)
+    const userClient = await createCookieAuthedSupabaseClient();
     const { data: userData, error: userErr } = await userClient.auth.getUser();
 
     if (userErr || !userData?.user) {
@@ -48,7 +48,7 @@ export async function POST(req: Request) {
 
     const userId = userData.user.id;
 
-    // 2) SuperAdmin check
+    // 2) SuperAdmin allowlist check
     const { data: adminRow, error: adminErr } = await userClient
       .from("platform_admins")
       .select("user_id")
@@ -66,14 +66,14 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3) Parse & validate body
-    const body = await req.json();
-    const { orgId, patch } = body ?? {};
+    // 3) Parse body
+    const body = await req.json().catch(() => null);
+    const orgId = body?.orgId as string | undefined;
+    const patch = body?.patch as Record<string, any> | undefined;
 
     if (!orgId || typeof orgId !== "string") {
       return NextResponse.json({ error: "Invalid or missing orgId" }, { status: 400 });
     }
-
     if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
       return NextResponse.json({ error: "Invalid patch payload" }, { status: 400 });
     }
@@ -102,7 +102,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: updateErr.message }, { status: 400 });
     }
 
-    return NextResponse.json({ organization: updatedOrg });
+    return NextResponse.json({ organization: updatedOrg }, { status: 200 });
   } catch (e: any) {
     console.error("Admin org update error:", e);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
