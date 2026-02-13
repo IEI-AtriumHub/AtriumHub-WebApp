@@ -43,7 +43,18 @@ export async function POST(req: Request) {
     const { data: userData, error: userErr } = await userClient.auth.getUser();
 
     if (userErr || !userData?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      // 🔎 Debug: see whether the API route is receiving the Supabase auth cookies
+      const cookieStore = await cookies();
+      const cookieNames = cookieStore.getAll().map((c) => c.name);
+
+      return NextResponse.json(
+        {
+          error: "Unauthorized",
+          cookieNames,
+          hasSbCookie: cookieNames.some((n) => n.startsWith("sb-")),
+        },
+        { status: 401 }
+      );
     }
 
     const userId = userData.user.id;
@@ -72,10 +83,16 @@ export async function POST(req: Request) {
     const patch = body?.patch as Record<string, any> | undefined;
 
     if (!orgId || typeof orgId !== "string") {
-      return NextResponse.json({ error: "Invalid or missing orgId" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid or missing orgId" },
+        { status: 400 }
+      );
     }
     if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
-      return NextResponse.json({ error: "Invalid patch payload" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid patch payload" },
+        { status: 400 }
+      );
     }
 
     // Protect critical fields
