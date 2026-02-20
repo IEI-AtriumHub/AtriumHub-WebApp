@@ -30,37 +30,42 @@ interface Need {
   helper: PersonWithGroup | null;
 
   organizations: { display_name: string } | null;
-  groups: { name: string } | null;
+  groups: { name: string } | null; // needs.group_id -> groups.id
   need_categories: { name: string } | null;
 }
 
-const urgencyBarColors: Record<string, string> = {
-  LOW: 'bg-blue-500',
-  MEDIUM: 'bg-blue-500',
-  HIGH: 'bg-orange-500',
-  CRITICAL: 'bg-red-500',
-};
-
-const urgencyPillColors: Record<string, string> = {
-  LOW: 'bg-blue-100 text-blue-700',
+const urgencyChipColors: Record<string, string> = {
+  LOW: 'bg-gray-100 text-gray-600',
   MEDIUM: 'bg-blue-100 text-blue-700',
   HIGH: 'bg-orange-100 text-orange-700',
   CRITICAL: 'bg-red-100 text-red-700',
 };
 
+const urgencyBarColors: Record<string, string> = {
+  LOW: 'bg-gray-300',
+  MEDIUM: 'bg-blue-500',
+  HIGH: 'bg-orange-500',
+  CRITICAL: 'bg-red-500',
+};
+
 function getNeedTypeLabel(needType: string) {
   switch (needType) {
     case 'WORK':
-      return '🛠️ Work';
+      return 'WORK';
     case 'FINANCIAL':
-      return '💰 Financial';
+      return 'FINANCIAL';
     case 'EVENT':
-      return '📅 Event';
+      return 'EVENT';
     case 'REQUEST':
-      return '🙋 Request';
+      return 'REQUEST';
     default:
       return needType;
   }
+}
+
+function normalizeOne<T>(value: any): T | null {
+  if (!value) return null;
+  return Array.isArray(value) ? (value[0] ?? null) : value;
 }
 
 function formatDateTime(value: string | null | undefined) {
@@ -90,7 +95,10 @@ export default function NeedsInProgressPage() {
   const supabase = useMemo(() => createClientComponentClient(), []);
 
   // In impersonation mode, behave like the impersonated org user.
-  const effectiveIsSuperAdmin = useMemo(() => isSuperAdmin && !isImpersonating, [isSuperAdmin, isImpersonating]);
+  const effectiveIsSuperAdmin = useMemo(
+    () => isSuperAdmin && !isImpersonating,
+    [isSuperAdmin, isImpersonating]
+  );
 
   useEffect(() => {
     const fetchNeeds = async () => {
@@ -117,12 +125,21 @@ export default function NeedsInProgressPage() {
             claimed_at,
             requester_user_id,
             claimed_by,
-            requester:requester_user_id (full_name, email, groups:groups!users_group_id_fkey (name))
+
+            requester:requester_user_id (
+              full_name,
+              email,
+              groups:groups!users_group_id_fkey (name)
             ),
-            helper:claimed_by (full_name, email, groups:groups!users_group_id_fkey (name))
+
+            helper:claimed_by (
+              full_name,
+              email,
+              groups:groups!users_group_id_fkey (name)
             ),
+
             organizations (display_name),
-            groups (name),
+            groups:group_id (name),
             need_categories:category_id (name)
           `
           )
@@ -140,11 +157,11 @@ export default function NeedsInProgressPage() {
 
         const normalized: Need[] = (data || []).map((n: any) => ({
           ...n,
-          requester: Array.isArray(n.requester) ? (n.requester[0] ?? null) : (n.requester ?? null),
-          helper: Array.isArray(n.helper) ? (n.helper[0] ?? null) : (n.helper ?? null),
-          organizations: Array.isArray(n.organizations) ? (n.organizations[0] ?? null) : (n.organizations ?? null),
-          groups: Array.isArray(n.groups) ? (n.groups[0] ?? null) : (n.groups ?? null),
-          need_categories: Array.isArray(n.need_categories) ? (n.need_categories[0] ?? null) : (n.need_categories ?? null),
+          requester: normalizeOne<PersonWithGroup>(n.requester),
+          helper: normalizeOne<PersonWithGroup>(n.helper),
+          organizations: normalizeOne<{ display_name: string }>(n.organizations),
+          groups: normalizeOne<{ name: string }>(n.groups),
+          need_categories: normalizeOne<{ name: string }>(n.need_categories),
         }));
 
         setNeeds(normalized);
@@ -167,7 +184,7 @@ export default function NeedsInProgressPage() {
     return (
       <PageContainer title="In Progress Needs" description="Needs currently being worked on">
         <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
         </div>
       </PageContainer>
     );
@@ -210,69 +227,63 @@ export default function NeedsInProgressPage() {
       ) : (
         <div className="grid gap-4">
           {needs.map((need) => {
-            const orgName = need.organizations?.display_name || 'Organization';
-            const needGroupName = need.groups?.name || 'No group';
+            const orgName = need.organizations?.display_name || 'Unknown organization';
+            const groupName = need.groups?.name || 'No group';
 
             const requesterName = need.requester?.full_name || 'Unknown';
             const helperName = need.helper?.full_name || 'Unassigned';
 
-            const bar = urgencyBarColors[need.urgency] || 'bg-blue-500';
+            const bar = urgencyBarColors[need.urgency] || 'bg-gray-300';
 
             return (
               <Link key={need.id} href={`/needs/${need.id}`} className="block">
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
-                  <div className="flex gap-4">
-                    {/* Left urgency color bar */}
-                    <div className={`w-1 rounded-full ${bar}`} />
+                <div className="relative bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow overflow-hidden">
+                  {/* Left urgency bar (same visual language as My Needs) */}
+                  <div className={`absolute left-0 top-0 h-full w-1 ${bar}`} />
 
-                    <div className="flex-1 min-w-0">
-                      {/* Top row: title + badges */}
-                      <div className="flex items-start justify-between gap-4 min-w-0">
-                        <div className="min-w-0">
-                          <h3 className="text-lg font-semibold text-gray-900 truncate">{need.title}</h3>
+                  <div className="pl-4">
+                    <div className="flex justify-between items-start gap-4">
+                      <div className="min-w-0">
+                        <h3 className="text-lg font-semibold text-gray-900 truncate">{need.title}</h3>
 
-                          <p className="text-sm text-gray-500 mt-1">
-                            {orgName} • {needGroupName}
-                          </p>
+                        <p className="text-sm text-gray-500 mt-1">
+                          {orgName} • {groupName}
+                        </p>
+
+                        <div className="mt-3 text-sm text-gray-700 space-y-1">
+                          <div>
+                            Requested by <span className="font-medium">{requesterName}</span>
+                          </div>
+                          <div>
+                            Claimed by <span className="font-medium">{helperName}</span>
+                          </div>
                         </div>
 
-                        <div className="flex flex-col items-end gap-2 shrink-0">
-                          <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              urgencyPillColors[need.urgency] || 'bg-blue-100 text-blue-700'
-                            }`}
-                          >
-                            {need.urgency}
-                          </span>
-
-                          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">
-                            {getNeedTypeLabel(need.need_type)}
-                          </span>
-                        </div>
+                        <p className="text-gray-600 mt-3 line-clamp-2 break-words">{need.description}</p>
                       </div>
 
-                      {/* People */}
-                      <div className="mt-4 text-sm text-gray-800 space-y-1">
-                        <div>
-                          <span className="text-gray-500">Requested by </span>
-                          <span className="font-medium">{requesterName}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Claimed by </span>
-                          <span className="font-medium">{helperName}</span>
-                        </div>
-                      </div>
-
-                      {/* Description */}
-                      <p className="text-gray-600 mt-4 line-clamp-2">{need.description}</p>
-
-                      {/* Bottom row (match Browse/My Needs pattern) */}
-                      <div className="mt-4 flex justify-between items-center text-sm">
-                        <span className="text-gray-400">
-                          Claimed: {formatDateTime(need.claimed_at)} • Created: {formatDate(need.created_at)}
+                      {/* Right-side chips (match My Needs pattern) */}
+                      <div className="flex flex-col items-end gap-2 shrink-0">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            urgencyChipColors[need.urgency] || 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {need.urgency}
                         </span>
-                        <span className="text-blue-600">View Details →</span>
+
+                        <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">
+                          {getNeedTypeLabel(need.need_type)}
+                        </span>
                       </div>
+                    </div>
+
+                    {/* Footer row (match Browse/My Needs: left date, right View Details arrow) */}
+                    <div className="mt-4 flex justify-between items-center text-sm">
+                      <span className="text-gray-400">
+                        Claimed: {formatDateTime(need.claimed_at)} • Created: {formatDate(need.created_at)}
+                      </span>
+                      <span className="text-blue-600">View Details →</span>
                     </div>
                   </div>
                 </div>
