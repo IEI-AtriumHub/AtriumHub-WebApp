@@ -36,6 +36,14 @@ const urgencyColors: Record<string, string> = {
   CRITICAL: 'bg-red-100 text-red-700',
 };
 
+// Left color bar (stronger contrast than the badge)
+const urgencyBarColors: Record<string, string> = {
+  LOW: 'bg-gray-300',
+  MEDIUM: 'bg-blue-500',
+  HIGH: 'bg-orange-500',
+  CRITICAL: 'bg-red-500',
+};
+
 function getNeedTypeLabel(needType: string) {
   switch (needType) {
     case 'WORK':
@@ -190,70 +198,79 @@ export default function NeedsPage() {
                   ? `Hidden (RLS) • ${shortId(need.requester_user_id)}`
                   : 'Missing requester';
 
+            const barColor =
+              urgencyBarColors[String(need.urgency || '').toUpperCase()] || 'bg-gray-300';
+
             return (
               <div
                 key={need.id}
-                className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow"
+                className="bg-white rounded-lg shadow hover:shadow-md transition-shadow flex gap-4 overflow-hidden"
               >
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2 flex-wrap">
-                      <h3 className="text-lg font-semibold text-gray-900">{need.title}</h3>
+                {/* Urgency color bar */}
+                <div className={`w-2 ${barColor}`} />
 
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          urgencyColors[need.urgency] || 'bg-gray-100 text-gray-600'
-                        }`}
-                      >
-                        {need.urgency}
-                      </span>
+                {/* Card content */}
+                <div className="p-6 flex-1">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2 flex-wrap">
+                        <h3 className="text-lg font-semibold text-gray-900">{need.title}</h3>
 
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                        {getNeedTypeLabel(need.need_type)}
-                      </span>
-
-                      {need.need_categories?.name ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          {need.need_categories.name}
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            urgencyColors[need.urgency] || 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {need.urgency}
                         </span>
-                      ) : null}
+
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                          {getNeedTypeLabel(need.need_type)}
+                        </span>
+
+                        {need.need_categories?.name ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            {need.need_categories.name}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {/* Always show Org + Group + Requested By */}
+                      <p className="text-sm text-gray-600 mb-2">
+                        <span className="font-medium text-gray-800">{orgName}</span>
+                        {' • '}
+                        <span className="font-medium text-gray-800">{groupName}</span>
+                        {' • '}
+                        <span className="text-gray-600">
+                          Requested by <span className="font-medium">{requesterLabel}</span>
+                        </span>
+                      </p>
+
+                      <p className="text-gray-600 line-clamp-2">{need.description}</p>
                     </div>
-
-                    {/* Always show Org + Group + Requested By */}
-                    <p className="text-sm text-gray-600 mb-2">
-                      <span className="font-medium text-gray-800">{orgName}</span>
-                      {' • '}
-                      <span className="font-medium text-gray-800">{groupName}</span>
-                      {' • '}
-                      <span className="text-gray-600">
-                        Requested by <span className="font-medium">{requesterLabel}</span>
-                      </span>
-                    </p>
-
-                    <p className="text-gray-600 line-clamp-2">{need.description}</p>
                   </div>
-                </div>
 
-                <div className="mt-4 flex justify-between items-center">
-                  <span className="text-sm text-gray-400">
-                    {new Date(need.created_at).toLocaleDateString()}
-                  </span>
+                  <div className="mt-4 flex justify-between items-center">
+                    <span className="text-sm text-gray-400">
+                      {new Date(need.created_at).toLocaleDateString()}
+                    </span>
 
-                  <div className="flex gap-2">
-                    {user?.id !== need.requester_user_id && (
+                    <div className="flex gap-2">
+                      {user?.id !== need.requester_user_id && (
+                        <Link href={`/needs/${need.id}`}>
+                          <Button size="sm">
+                            <HandRaisedIcon className="h-4 w-4 mr-1" />
+                            I Can Help
+                          </Button>
+                        </Link>
+                      )}
+
                       <Link href={`/needs/${need.id}`}>
-                        <Button size="sm">
-                          <HandRaisedIcon className="h-4 w-4 mr-1" />
-                          I Can Help
+                        <Button variant="outline" size="sm">
+                          View Details
                         </Button>
                       </Link>
-                    )}
-
-                    <Link href={`/needs/${need.id}`}>
-                      <Button variant="outline" size="sm">
-                        View Details
-                      </Button>
-                    </Link>
+                    </div>
                   </div>
                 </div>
               </div>
