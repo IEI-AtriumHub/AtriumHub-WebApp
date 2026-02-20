@@ -8,10 +8,9 @@ import Button from '@/components/ui/Button';
 import PageContainer from '@/components/layout/PageContainer';
 import { HandRaisedIcon } from '@heroicons/react/24/outline';
 
-interface PersonWithGroup {
+interface PersonLite {
   full_name: string;
   email?: string | null;
-  groups?: { name: string } | null;
 }
 
 interface Need {
@@ -26,12 +25,11 @@ interface Need {
   requester_user_id: string;
   claimed_by: string | null;
 
-  requester: PersonWithGroup | null;
-  helper: PersonWithGroup | null;
+  requester: PersonLite | null;
+  helper: PersonLite | null;
 
   organizations: { display_name: string } | null;
-  groups: { name: string } | null; // needs.group_id -> groups.id
-  need_categories: { name: string } | null;
+  groups: { name: string } | null; // needs.group_id -> groups.name
 }
 
 const urgencyChipColors: Record<string, string> = {
@@ -63,11 +61,6 @@ function getNeedTypeLabel(needType: string) {
   }
 }
 
-function normalizeOne<T>(value: any): T | null {
-  if (!value) return null;
-  return Array.isArray(value) ? (value[0] ?? null) : value;
-}
-
 function formatDateTime(value: string | null | undefined) {
   if (!value) return '—';
   try {
@@ -86,6 +79,11 @@ function formatDate(value: string | null | undefined) {
   }
 }
 
+function normalizeOne<T>(value: any): T | null {
+  if (!value) return null;
+  return Array.isArray(value) ? (value[0] ?? null) : value;
+}
+
 export default function NeedsInProgressPage() {
   const { user, loading: authLoading, organization, isSuperAdmin, isImpersonating } = useAuth();
   const [needs, setNeeds] = useState<Need[]>([]);
@@ -94,7 +92,6 @@ export default function NeedsInProgressPage() {
 
   const supabase = useMemo(() => createClientComponentClient(), []);
 
-  // In impersonation mode, behave like the impersonated org user.
   const effectiveIsSuperAdmin = useMemo(
     () => isSuperAdmin && !isImpersonating,
     [isSuperAdmin, isImpersonating]
@@ -103,6 +100,7 @@ export default function NeedsInProgressPage() {
   useEffect(() => {
     const fetchNeeds = async () => {
       try {
+        setLoading(true);
         if (!user) return;
 
         if (!effectiveIsSuperAdmin && !organization?.id) {
@@ -125,29 +123,16 @@ export default function NeedsInProgressPage() {
             claimed_at,
             requester_user_id,
             claimed_by,
-
-            requester:requester_user_id (
-              full_name,
-              email,
-              groups:groups!users_group_id_fkey (name)
-            ),
-
-            helper:claimed_by (
-              full_name,
-              email,
-              groups:groups!users_group_id_fkey (name)
-            ),
-
+            requester:requester_user_id (full_name, email),
+            helper:claimed_by (full_name, email),
             organizations (display_name),
-            groups:group_id (name),
-            need_categories:category_id (name)
+            groups:group_id (name)
           `
           )
           .eq('status', 'CLAIMED_IN_PROGRESS')
           .order('claimed_at', { ascending: false })
           .order('created_at', { ascending: false });
 
-        // Tenant isolation in UI for normal users and while impersonating
         if (!effectiveIsSuperAdmin && organization?.id) {
           query = query.eq('organization_id', organization.id);
         }
@@ -157,11 +142,10 @@ export default function NeedsInProgressPage() {
 
         const normalized: Need[] = (data || []).map((n: any) => ({
           ...n,
-          requester: normalizeOne<PersonWithGroup>(n.requester),
-          helper: normalizeOne<PersonWithGroup>(n.helper),
+          requester: normalizeOne<PersonLite>(n.requester),
+          helper: normalizeOne<PersonLite>(n.helper),
           organizations: normalizeOne<{ display_name: string }>(n.organizations),
           groups: normalizeOne<{ name: string }>(n.groups),
-          need_categories: normalizeOne<{ name: string }>(n.need_categories),
         }));
 
         setNeeds(normalized);
@@ -175,9 +159,7 @@ export default function NeedsInProgressPage() {
       }
     };
 
-    if (!authLoading) {
-      fetchNeeds();
-    }
+    if (!authLoading) fetchNeeds();
   }, [authLoading, user, organization?.id, effectiveIsSuperAdmin, supabase]);
 
   if (authLoading || loading) {
@@ -230,60 +212,61 @@ export default function NeedsInProgressPage() {
             const orgName = need.organizations?.display_name || 'Unknown organization';
             const groupName = need.groups?.name || 'No group';
 
-            const requesterName = need.requester?.full_name || 'Unknown';
-            const helperName = need.helper?.full_name || 'Unassigned';
+            const requesterName = need.requester?.full_name?.trim() || 'Unknown';
+            const helperName = need.helper?.full_name?.trim() || 'Unassigned';
 
             const bar = urgencyBarColors[need.urgency] || 'bg-gray-300';
 
             return (
               <Link key={need.id} href={`/needs/${need.id}`} className="block">
-                <div className="relative bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow overflow-hidden">
-                  {/* Left urgency bar (same visual language as My Needs) */}
-                  <div className={`absolute left-0 top-0 h-full w-1 ${bar}`} />
+                {/* MATCH My Needs / Browse layout: real left bar + normal padding (no absolute, no drift) */}
+                <div className="bg-white rounded-lg shadow p-0 hover:shadow-md transition-shadow overflow-hidden">
+                  <div className="flex">
+                    <div className={`w-1 ${bar}`} />
+                    <div className="flex-1 p-6 min-w-0">
+                      <div className="flex justify-between items-start gap-4">
+                        <div className="min-w-0">
+                          <h3 className="text-lg font-semibold text-gray-900 truncate">{need.title}</h3>
 
-                  <div className="pl-4">
-                    <div className="flex justify-between items-start gap-4">
-                      <div className="min-w-0">
-                        <h3 className="text-lg font-semibold text-gray-900 truncate">{need.title}</h3>
+                          <p className="text-sm text-gray-500 mt-1">
+                            {orgName} • {groupName}
+                          </p>
 
-                        <p className="text-sm text-gray-500 mt-1">
-                          {orgName} • {groupName}
-                        </p>
-
-                        <div className="mt-3 text-sm text-gray-700 space-y-1">
-                          <div>
-                            Requested by <span className="font-medium">{requesterName}</span>
+                          <div className="mt-3 text-sm text-gray-700 space-y-1">
+                            <div>
+                              Requested by <span className="font-medium">{requesterName}</span>
+                            </div>
+                            <div>
+                              Claimed by <span className="font-medium">{helperName}</span>
+                            </div>
                           </div>
-                          <div>
-                            Claimed by <span className="font-medium">{helperName}</span>
-                          </div>
+
+                          <p className="text-gray-600 mt-3 line-clamp-2 break-words">{need.description}</p>
                         </div>
 
-                        <p className="text-gray-600 mt-3 line-clamp-2 break-words">{need.description}</p>
+                        {/* Right-side chips (match My Needs pattern) */}
+                        <div className="flex flex-col items-end gap-2 shrink-0">
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              urgencyChipColors[need.urgency] || 'bg-gray-100 text-gray-600'
+                            }`}
+                          >
+                            {need.urgency}
+                          </span>
+
+                          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">
+                            {getNeedTypeLabel(need.need_type)}
+                          </span>
+                        </div>
                       </div>
 
-                      {/* Right-side chips (match My Needs pattern) */}
-                      <div className="flex flex-col items-end gap-2 shrink-0">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            urgencyChipColors[need.urgency] || 'bg-gray-100 text-gray-600'
-                          }`}
-                        >
-                          {need.urgency}
+                      {/* Footer row (match Browse/My Needs) */}
+                      <div className="mt-4 flex justify-between items-center text-sm">
+                        <span className="text-gray-400">
+                          Claimed: {formatDateTime(need.claimed_at)} • Created: {formatDate(need.created_at)}
                         </span>
-
-                        <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">
-                          {getNeedTypeLabel(need.need_type)}
-                        </span>
+                        <span className="text-blue-600">View Details →</span>
                       </div>
-                    </div>
-
-                    {/* Footer row (match Browse/My Needs: left date, right View Details arrow) */}
-                    <div className="mt-4 flex justify-between items-center text-sm">
-                      <span className="text-gray-400">
-                        Claimed: {formatDateTime(need.claimed_at)} • Created: {formatDate(need.created_at)}
-                      </span>
-                      <span className="text-blue-600">View Details →</span>
                     </div>
                   </div>
                 </div>
