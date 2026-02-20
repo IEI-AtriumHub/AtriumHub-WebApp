@@ -22,7 +22,7 @@ interface Need {
   organizations: { display_name: string } | null;
 
   // Required identity context
-  users: { full_name: string } | null;
+  users: { id?: string; full_name: string } | null;
 
   // Reporting/filters context
   groups: { name: string } | null;
@@ -56,6 +56,11 @@ function normalizeOne<T>(value: any): T | null {
   return Array.isArray(value) ? (value[0] ?? null) : value;
 }
 
+function shortId(id: string | null | undefined) {
+  if (!id) return '';
+  return id.length > 10 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id;
+}
+
 export default function NeedsPage() {
   const { user, organization, loading: authLoading, isSuperAdmin } = useAuth();
   const [needs, setNeeds] = useState<Need[]>([]);
@@ -87,7 +92,7 @@ export default function NeedsPage() {
             need_type,
             created_at,
             requester_user_id,
-            users:requester_user_id (full_name),
+            users:requester_user_id (id, full_name),
             organizations (display_name),
             groups:group_id (name),
             need_categories:category_id (name)
@@ -106,7 +111,7 @@ export default function NeedsPage() {
 
         const normalized: Need[] = (data || []).map((n: any) => ({
           ...n,
-          users: normalizeOne<{ full_name: string }>(n.users),
+          users: normalizeOne<{ id?: string; full_name: string }>(n.users),
           organizations: normalizeOne<{ display_name: string }>(n.organizations),
           groups: normalizeOne<{ name: string }>(n.groups),
           need_categories: normalizeOne<{ name: string }>(n.need_categories),
@@ -175,8 +180,21 @@ export default function NeedsPage() {
             const groupName = need.groups?.name || 'No group';
             const orgName = need.organizations?.display_name || 'Unknown organization';
 
+            // Truthful label:
+            // - If join returns a name, show it.
+            // - If not, don’t pretend it’s “Unknown” — it’s either missing data or blocked by RLS.
+            const requesterLabel =
+              need.users?.full_name?.trim()
+                ? need.users.full_name
+                : need.requester_user_id
+                  ? `Hidden (RLS) • ${shortId(need.requester_user_id)}`
+                  : 'Missing requester';
+
             return (
-              <div key={need.id} className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
+              <div
+                key={need.id}
+                className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow"
+              >
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2 flex-wrap">
@@ -208,7 +226,7 @@ export default function NeedsPage() {
                       <span className="font-medium text-gray-800">{groupName}</span>
                       {' • '}
                       <span className="text-gray-600">
-                        Requested by <span className="font-medium">{need.users?.full_name || 'Unknown'}</span>
+                        Requested by <span className="font-medium">{requesterLabel}</span>
                       </span>
                     </p>
 
@@ -217,7 +235,9 @@ export default function NeedsPage() {
                 </div>
 
                 <div className="mt-4 flex justify-between items-center">
-                  <span className="text-sm text-gray-400">{new Date(need.created_at).toLocaleDateString()}</span>
+                  <span className="text-sm text-gray-400">
+                    {new Date(need.created_at).toLocaleDateString()}
+                  </span>
 
                   <div className="flex gap-2">
                     {user?.id !== need.requester_user_id && (
