@@ -167,7 +167,7 @@ export default function NeedsInProgressPage() {
       title="In Progress Needs"
       description="Needs currently being worked on in your community"
       actions={
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Link href="/needs">
             <Button variant="outline">Browse Open Needs</Button>
           </Link>
@@ -187,7 +187,7 @@ export default function NeedsInProgressPage() {
         <div className="text-center py-12 bg-white rounded-lg shadow">
           <p className="text-gray-500 text-lg">No needs are currently in progress.</p>
           <p className="text-gray-400 mt-2">When someone claims a need, it will appear here.</p>
-          <div className="mt-4 flex justify-center gap-2">
+          <div className="mt-4 flex justify-center gap-2 flex-wrap">
             <Link href="/needs">
               <Button variant="outline">Browse Open Needs</Button>
             </Link>
@@ -209,52 +209,50 @@ export default function NeedsInProgressPage() {
 
             return (
               <Link key={need.id} href={`/needs/${need.id}`} className="block">
-                {/* Card layout aligned with My Needs / Browse Needs */}
                 <div className="bg-white rounded-lg shadow p-0 hover:shadow-md transition-shadow overflow-hidden">
                   <div className="flex">
                     {/* Left urgency bar */}
                     <div className={`w-1 ${bar}`} />
 
                     <div className="flex-1 p-6 min-w-0">
-                      <div className="flex justify-between items-start gap-4">
-                        {/* Main content */}
-                        <div className="min-w-0">
-                          <h3 className="text-lg font-semibold text-gray-900 truncate">{need.title}</h3>
+                      {/* Title */}
+                      <h3 className="text-lg font-semibold text-gray-900 truncate">{need.title}</h3>
 
-                          <p className="text-sm text-gray-500 mt-1">
-                            {orgName} • {groupName}
-                          </p>
+                      {/* Chips — ALWAYS below title (mobile + desktop) */}
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            urgencyChipColors[need.urgency] || 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {need.urgency}
+                        </span>
 
-                          <div className="mt-3 text-sm text-gray-700 space-y-1">
-                            <div>
-                              Requested by <span className="font-medium">{requesterName}</span>
-                            </div>
-                            <div>
-                              Claimed by <span className="font-medium">{helperName}</span>
-                            </div>
-                          </div>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                          {getNeedTypeLabel(need.need_type)}
+                        </span>
+                      </div>
 
-                          <p className="text-gray-600 mt-3 line-clamp-2 break-words">{need.description}</p>
+                      {/* Org + Group */}
+                      <p className="text-sm text-gray-500 mt-2">
+                        {orgName} • {groupName}
+                      </p>
+
+                      {/* Requested/Claimed */}
+                      <div className="mt-3 text-sm text-gray-700 space-y-1">
+                        <div>
+                          Requested by <span className="font-medium">{requesterName}</span>
                         </div>
-
-                        {/* Right chips */}
-                        <div className="flex flex-col items-end gap-2 shrink-0">
-                          <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              urgencyChipColors[need.urgency] || 'bg-gray-100 text-gray-600'
-                            }`}
-                          >
-                            {need.urgency}
-                          </span>
-
-                          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">
-                            {getNeedTypeLabel(need.need_type)}
-                          </span>
+                        <div>
+                          Claimed by <span className="font-medium">{helperName}</span>
                         </div>
                       </div>
 
-                      {/* Footer: stacked dates + call-to-action (card itself is clickable) */}
-                      <div className="mt-4 text-sm space-y-1">
+                      {/* Description */}
+                      <p className="text-gray-600 mt-3 line-clamp-2 break-words">{need.description}</p>
+
+                      {/* Footer — stacked, dates only, View Details once */}
+                      <div className="mt-4 text-sm">
                         <div className="text-gray-400">Created: {formatDate(need.created_at)}</div>
                         <div className="text-gray-400">
                           Claimed: {need.claimed_at ? formatDate(need.claimed_at) : '—'}
