@@ -50,6 +50,14 @@ const urgencyColors: Record<string, string> = {
   CRITICAL: 'bg-red-100 text-red-700',
 };
 
+// Left color bar (stronger contrast than the badge)
+const urgencyBarColors: Record<string, string> = {
+  LOW: 'bg-gray-300',
+  MEDIUM: 'bg-blue-500',
+  HIGH: 'bg-orange-500',
+  CRITICAL: 'bg-red-500',
+};
+
 export default function MyNeedsPage() {
   const { user, loading: authLoading } = useAuth();
   const [needs, setNeeds] = useState<Need[]>([]);
@@ -168,46 +176,61 @@ export default function MyNeedsPage() {
         </div>
       ) : (
         <div className="grid gap-4">
-          {needs.map((need) => (
-            <Link key={need.id} href={`/needs/${need.id}`} className="block">
-              <div className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-lg font-semibold text-gray-900">{need.title}</h3>
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          statusColors[need.status] || 'bg-gray-100 text-gray-800'
-                        }`}
-                      >
-                        {statusLabels[need.status] || need.status}
-                      </span>
+          {needs.map((need) => {
+            const barColor =
+              urgencyBarColors[String(need.urgency || '').toUpperCase()] || 'bg-gray-300';
+
+            return (
+              <Link key={need.id} href={`/needs/${need.id}`} className="block">
+                <div className="bg-white rounded-lg shadow hover:shadow-md transition-shadow flex gap-4 overflow-hidden">
+                  {/* Urgency color bar */}
+                  <div className={`w-2 ${barColor}`} />
+
+                  {/* Card content */}
+                  <div className="p-6 flex-1">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2 flex-wrap">
+                          <h3 className="text-lg font-semibold text-gray-900">{need.title}</h3>
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              statusColors[need.status] || 'bg-gray-100 text-gray-800'
+                            }`}
+                          >
+                            {statusLabels[need.status] || need.status}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-500 mb-2">
+                          {need.organizations?.display_name || 'N/A'} • {need.groups?.name || 'No group'}
+                        </p>
+                        <p className="text-gray-600 line-clamp-2">{need.description}</p>
+                      </div>
+
+                      <div className="flex flex-col items-end gap-2 ml-4 shrink-0">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            urgencyColors[need.urgency] || 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {need.urgency}
+                        </span>
+                        <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">
+                          {need.need_type}
+                        </span>
+                      </div>
                     </div>
-                    <p className="text-sm text-gray-500 mb-2">
-                      {need.organizations?.display_name || 'N/A'} • {need.groups?.name || 'No group'}
-                    </p>
-                    <p className="text-gray-600 line-clamp-2">{need.description}</p>
-                  </div>
-                  <div className="flex flex-col items-end gap-2 ml-4">
-                    <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        urgencyColors[need.urgency] || 'bg-gray-100 text-gray-600'
-                      }`}
-                    >
-                      {need.urgency}
-                    </span>
-                    <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">{need.need_type}</span>
+
+                    <div className="mt-4 flex justify-between items-center text-sm">
+                      <span className="text-gray-400">
+                        Submitted: {need.submitted_at ? new Date(need.submitted_at).toLocaleDateString() : 'Draft'}
+                      </span>
+                      <span className="text-blue-600">View Details →</span>
+                    </div>
                   </div>
                 </div>
-                <div className="mt-4 flex justify-between items-center text-sm">
-                  <span className="text-gray-400">
-                    Submitted: {need.submitted_at ? new Date(need.submitted_at).toLocaleDateString() : 'Draft'}
-                  </span>
-                  <span className="text-blue-600">View Details →</span>
-                </div>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            );
+          })}
         </div>
       )}
     </PageContainer>
