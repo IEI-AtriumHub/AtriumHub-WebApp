@@ -117,15 +117,9 @@ export default function NeedsInProgressPage() {
             claimed_at,
             requester_user_id,
             claimed_by,
-            requester:requester_user_id (
-              full_name,
-              email,
-              groups (name)
+            requester:requester_user_id (full_name, email, groups:groups!users_group_id_fkey (name))
             ),
-            helper:claimed_by (
-              full_name,
-              email,
-              groups (name)
+            helper:claimed_by (full_name, email, groups:groups!users_group_id_fkey (name))
             ),
             organizations (display_name),
             groups (name),
