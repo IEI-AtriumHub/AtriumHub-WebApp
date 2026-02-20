@@ -26,12 +26,11 @@ interface Need {
   requester_user_id: string;
   claimed_by: string | null;
 
-  // Joins (normalize arrays -> single object)
   requester: PersonWithGroup | null;
   helper: PersonWithGroup | null;
 
   organizations: { display_name: string } | null;
-  groups: { name: string } | null; // need.group_id -> groups(name)
+  groups: { name: string } | null;
   need_categories: { name: string } | null;
 }
 
@@ -75,13 +74,18 @@ function formatDate(value: string | null | undefined) {
   }
 }
 
+function normalizeOne<T>(value: any): T | null {
+  if (!value) return null;
+  return Array.isArray(value) ? (value[0] ?? null) : value;
+}
+
 export default function NeedsInProgressPage() {
   const { user, loading: authLoading, organization, isSuperAdmin, isImpersonating } = useAuth();
   const [needs, setNeeds] = useState<Need[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const supabase = createClientComponentClient();
+  const supabase = useMemo(() => createClientComponentClient(), []);
 
   // In impersonation mode, behave like the impersonated org user.
   const effectiveIsSuperAdmin = useMemo(() => isSuperAdmin && !isImpersonating, [isSuperAdmin, isImpersonating]);
@@ -90,6 +94,8 @@ export default function NeedsInProgressPage() {
     const fetchNeeds = async () => {
       try {
         if (!user) return;
+
+        setLoading(true);
 
         if (!effectiveIsSuperAdmin && !organization?.id) {
           setNeeds([]);
@@ -111,18 +117,21 @@ export default function NeedsInProgressPage() {
             claimed_at,
             requester_user_id,
             claimed_by,
+
             requester:requester_user_id (
               full_name,
               email,
-              groups (name)
+              groups:group_id (name)
             ),
+
             helper:claimed_by (
               full_name,
               email,
-              groups (name)
+              groups:group_id (name)
             ),
+
             organizations (display_name),
-            groups (name),
+            groups:group_id (name),
             need_categories:category_id (name)
           `
           )
@@ -140,11 +149,11 @@ export default function NeedsInProgressPage() {
 
         const normalized: Need[] = (data || []).map((n: any) => ({
           ...n,
-          requester: Array.isArray(n.requester) ? (n.requester[0] ?? null) : (n.requester ?? null),
-          helper: Array.isArray(n.helper) ? (n.helper[0] ?? null) : (n.helper ?? null),
-          organizations: Array.isArray(n.organizations) ? (n.organizations[0] ?? null) : (n.organizations ?? null),
-          groups: Array.isArray(n.groups) ? (n.groups[0] ?? null) : (n.groups ?? null),
-          need_categories: Array.isArray(n.need_categories) ? (n.need_categories[0] ?? null) : (n.need_categories ?? null),
+          requester: normalizeOne<PersonWithGroup>(n.requester),
+          helper: normalizeOne<PersonWithGroup>(n.helper),
+          organizations: normalizeOne<{ display_name: string }>(n.organizations),
+          groups: normalizeOne<{ name: string }>(n.groups),
+          need_categories: normalizeOne<{ name: string }>(n.need_categories),
         }));
 
         setNeeds(normalized);
@@ -215,11 +224,9 @@ export default function NeedsInProgressPage() {
             const needGroupName = need.groups?.name || 'No group';
 
             const requesterName = need.requester?.full_name || 'Unknown';
-            const requesterEmail = need.requester?.email || null;
             const requesterGroup = need.requester?.groups?.name || 'No group';
 
             const helperName = need.helper?.full_name || 'Unassigned';
-            const helperEmail = need.helper?.email || null;
             const helperGroup = need.helper?.groups?.name || 'No group';
 
             return (
@@ -248,48 +255,41 @@ export default function NeedsInProgressPage() {
                       )}
                     </div>
 
-                    {/* Org + Need Group + timestamps */}
                     <p className="text-sm text-gray-500 mb-2">
-                      {orgName} • {needGroupName} • Claimed {formatDateTime(need.claimed_at)} • Created {formatDate(need.created_at)}
+                      <span className="font-medium text-gray-800">{orgName}</span>
+                      {' • '}
+                      <span className="font-medium text-gray-800">{needGroupName}</span>
+                      {' • '}
+                      Claimed {formatDateTime(need.claimed_at)}
+                      {' • '}
+                      Created {formatDate(need.created_at)}
                     </p>
 
                     <p className="text-gray-600 line-clamp-2">{need.description}</p>
 
-                    {/* People + their groups */}
-                    <div className="mt-3 text-sm text-gray-700 space-y-1">
-                      <div>
-                        <span className="text-gray-500">Requested by:</span>{' '}
-                        <span className="font-medium">{requesterName}</span>
-                        {requesterEmail ? <span className="text-gray-500"> ({requesterEmail})</span> : null}
-                        <span className="text-gray-500"> • </span>
-                        <span className="text-gray-500">Group:</span>{' '}
-                        <span className="font-medium">{requesterGroup}</span>
+                    {/* Goal: clearly show who submitted and who claimed */}
+                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                      <div className="rounded-lg border bg-gray-50 p-3">
+                        <div className="text-gray-500">Submitted by</div>
+                        <div className="font-semibold text-gray-900">{requesterName}</div>
+                        <div className="text-gray-600">{requesterGroup}</div>
                       </div>
 
-                      <div>
-                        <span className="text-gray-500">Helping:</span>{' '}
-                        <span className="font-medium">{helperName}</span>
-                        {helperEmail ? <span className="text-gray-500"> ({helperEmail})</span> : null}
-                        <span className="text-gray-500"> • </span>
-                        <span className="text-gray-500">Group:</span>{' '}
-                        <span className="font-medium">{helperGroup}</span>
+                      <div className="rounded-lg border bg-gray-50 p-3">
+                        <div className="text-gray-500">Claimed by</div>
+                        <div className="font-semibold text-gray-900">{helperName}</div>
+                        <div className="text-gray-600">{helperGroup}</div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="ml-4 flex flex-col items-end gap-2">
-                    <Link href={`/needs/${need.id}`}>
-                      <Button variant="outline" size="sm">
-                        View Details
-                      </Button>
-                    </Link>
+                    <div className="mt-4 flex justify-end">
+                      <Link href={`/needs/${need.id}`}>
+                        <Button variant="outline" size="sm">
+                          View Details
+                        </Button>
+                      </Link>
+                    </div>
                   </div>
-                </div>
-
-                <div className="mt-4 flex justify-end">
-                  <Link href={`/needs/${need.id}`}>
-                    <Button size="sm">Open</Button>
-                  </Link>
                 </div>
               </div>
             );
