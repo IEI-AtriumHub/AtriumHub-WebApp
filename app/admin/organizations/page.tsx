@@ -74,11 +74,12 @@ export default function OrganizationsPage() {
   };
 
   const sanitizeSlug = (raw: string) =>
-    raw
+    (raw || '')
       .toLowerCase()
       .trim()
       .replace(/\s+/g, '-')
-      .replace(/[^a-z0-9-]/g, '');
+      .replace(/[^a-z0-9-]/g, '')
+      .replace(/-+/g, '-');
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -132,7 +133,7 @@ export default function OrganizationsPage() {
     return json.organization as Organization;
   }
 
-  // 🔥 Secure Admin API Caller (CREATE) — we’ll add route next step if needed
+  // 🔥 Secure Admin API Caller (CREATE)
   async function callAdminCreateOrgApi(payload: {
     display_name: string;
     slug: string;
@@ -218,14 +219,18 @@ export default function OrganizationsPage() {
     setSaving(true);
 
     try {
-      const slug = sanitizeSlug(formData.slug);
+      const display_name = (formData.display_name || '').trim();
+      const slug = sanitizeSlug(formData.slug || display_name);
+
+      if (!display_name) throw new Error('Display Name is required.');
+      if (!slug) throw new Error('Slug is required.');
 
       const created = await callAdminCreateOrgApi({
-        display_name: formData.display_name,
+        display_name,
         slug,
         primary_color: formData.primary_color,
         allow_open_signup: formData.allow_open_signup,
-        is_active: true,
+        is_active: formData.is_active,
       });
 
       setOrganizations((prev) => [created, ...prev]);
@@ -245,10 +250,14 @@ export default function OrganizationsPage() {
 
     setSaving(true);
     try {
-      const slug = sanitizeSlug(formData.slug);
+      const display_name = (formData.display_name || '').trim();
+      const slug = sanitizeSlug(formData.slug || display_name);
+
+      if (!display_name) throw new Error('Display Name is required.');
+      if (!slug) throw new Error('Slug is required.');
 
       const updated = await callAdminUpdateOrgApi(editingOrg.id, {
-        display_name: formData.display_name,
+        display_name,
         slug,
         primary_color: formData.primary_color,
         allow_open_signup: formData.allow_open_signup,
@@ -400,12 +409,6 @@ export default function OrganizationsPage() {
                   Cancel
                 </Button>
               </div>
-
-              {showCreateForm && (
-                <p className="text-xs text-gray-500">
-                  If “Create” fails, it means the admin create endpoint isn’t deployed yet. We’ll add it next.
-                </p>
-              )}
             </form>
           </div>
         )}
