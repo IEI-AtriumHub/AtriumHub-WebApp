@@ -6,7 +6,6 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import Link from 'next/link';
 import Button from '@/components/ui/Button';
 import PageContainer from '@/components/layout/PageContainer';
-import { HandRaisedIcon } from '@heroicons/react/24/outline';
 
 interface PersonLite {
   full_name: string;
@@ -58,15 +57,6 @@ function getNeedTypeLabel(needType: string) {
       return 'REQUEST';
     default:
       return needType;
-  }
-}
-
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return '—';
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
-    return '—';
   }
 }
 
@@ -219,12 +209,15 @@ export default function NeedsInProgressPage() {
 
             return (
               <Link key={need.id} href={`/needs/${need.id}`} className="block">
-                {/* MATCH My Needs / Browse layout: real left bar + normal padding (no absolute, no drift) */}
+                {/* Card layout aligned with My Needs / Browse Needs */}
                 <div className="bg-white rounded-lg shadow p-0 hover:shadow-md transition-shadow overflow-hidden">
                   <div className="flex">
+                    {/* Left urgency bar */}
                     <div className={`w-1 ${bar}`} />
+
                     <div className="flex-1 p-6 min-w-0">
                       <div className="flex justify-between items-start gap-4">
+                        {/* Main content */}
                         <div className="min-w-0">
                           <h3 className="text-lg font-semibold text-gray-900 truncate">{need.title}</h3>
 
@@ -244,7 +237,7 @@ export default function NeedsInProgressPage() {
                           <p className="text-gray-600 mt-3 line-clamp-2 break-words">{need.description}</p>
                         </div>
 
-                        {/* Right-side chips (match My Needs pattern) */}
+                        {/* Right chips */}
                         <div className="flex flex-col items-end gap-2 shrink-0">
                           <span
                             className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -260,11 +253,13 @@ export default function NeedsInProgressPage() {
                         </div>
                       </div>
 
-                      {/* Footer row (match Browse/My Needs) */}
-                      <div className="mt-4 flex flex-col gap-2 text-sm sm:flex-row sm:justify-between sm:items-center">
-                        <span className="text-gray-400">
-Created: {formatDate(need.created_at)}\n                          Claimed: {need.claimed_at ? formatDate(need.claimed_at) : "—"}\n                          View Details →                        </span>
-                        <span className="text-blue-600 whitespace-nowrap">View Details →</span>
+                      {/* Footer: stacked dates + call-to-action (card itself is clickable) */}
+                      <div className="mt-4 text-sm space-y-1">
+                        <div className="text-gray-400">Created: {formatDate(need.created_at)}</div>
+                        <div className="text-gray-400">
+                          Claimed: {need.claimed_at ? formatDate(need.claimed_at) : '—'}
+                        </div>
+                        <div className="text-blue-600 font-medium mt-2">View Details →</div>
                       </div>
                     </div>
                   </div>
