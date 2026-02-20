@@ -261,11 +261,11 @@ export default function NeedsInProgressPage() {
                       </div>
 
                       {/* Footer row (match Browse/My Needs) */}
-                      <div className="mt-4 flex justify-between items-center text-sm">
+                      <div className="mt-4 flex flex-col gap-2 text-sm sm:flex-row sm:justify-between sm:items-center">
                         <span className="text-gray-400">
                           Claimed: {formatDateTime(need.claimed_at)} • Created: {formatDate(need.created_at)}
                         </span>
-                        <span className="text-blue-600">View Details →</span>
+                        <span className="text-blue-600 whitespace-nowrap">View Details →</span>
                       </div>
                     </div>
                   </div>
