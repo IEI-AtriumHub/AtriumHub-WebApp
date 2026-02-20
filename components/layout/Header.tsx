@@ -33,7 +33,7 @@ function classNames(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
 }
 
-export function Header({ onMenuClick }: HeaderProps) {
+function Header({ onMenuClick }: HeaderProps) {
   const { user, signOut, displayIsAdmin } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
@@ -340,3 +340,6 @@ export function Header({ onMenuClick }: HeaderProps) {
     </>
   );
 }
+
+export { Header };
+export default Header;
