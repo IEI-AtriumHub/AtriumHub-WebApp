@@ -2,7 +2,7 @@
 
 import { Fragment, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Dialog, Menu, Transition } from '@headlessui/react';
 import {
   Bars3Icon,
@@ -36,6 +36,7 @@ function classNames(...classes: Array<string | false | null | undefined>) {
 export function Header({ onMenuClick }: HeaderProps) {
   const { user, signOut, displayIsAdmin } = useAuth();
   const pathname = usePathname();
+  const router = useRouter();
 
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -57,6 +58,8 @@ export function Header({ onMenuClick }: HeaderProps) {
     [navItems, displayIsAdmin]
   );
 
+  const initials = (user?.full_name?.[0] || user?.email?.[0] || 'A').toUpperCase();
+
   const handleHamburgerClick = () => {
     // If a parent provided a handler, call it.
     // Otherwise open our internal mobile drawer so the button always works.
@@ -64,17 +67,35 @@ export function Header({ onMenuClick }: HeaderProps) {
     else setMobileOpen(true);
   };
 
+  const closeMobile = () => setMobileOpen(false);
+
+  const go = (href: string) => {
+    // Always close drawer on navigation so it feels native on mobile.
+    closeMobile();
+    router.push(href);
+  };
+
+  const handleSignOut = async () => {
+    closeMobile();
+    await signOut();
+  };
+
+  const isActive = (href: string) => {
+    if (href === '/') return pathname === '/';
+    return pathname === href || pathname.startsWith(href + '/');
+  };
+
   return (
     <>
       <header className="bg-white border-b">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-14 items-center justify-between">
-            {/* Left: Hamburger + Brand */}
+            {/* Left: Hamburger (mobile) + Brand */}
             <div className="flex items-center gap-3">
               <button
                 type="button"
                 onClick={handleHamburgerClick}
-                className="inline-flex items-center justify-center rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="sm:hidden inline-flex items-center justify-center rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-600"
                 aria-label="Open menu"
               >
                 <Bars3Icon className="h-6 w-6" aria-hidden="true" />
@@ -82,17 +103,54 @@ export function Header({ onMenuClick }: HeaderProps) {
               </button>
 
               <Link href="/" className="flex items-center gap-2">
-                {/* You can swap this for a logo later */}
                 <div className="h-9 w-9 rounded-lg bg-purple-600 text-white flex items-center justify-center font-semibold">
-                  {user?.full_name?.[0]?.toUpperCase() || 'A'}
+                  {initials}
                 </div>
                 <span className="text-lg font-bold text-gray-900">AtriumHub</span>
               </Link>
             </div>
 
+            {/* Desktop nav (optional quick links) */}
+            <nav className="hidden sm:flex items-center gap-2">
+              <Link
+                href="/needs"
+                className={classNames(
+                  isActive('/needs') && !isActive('/needs/new') ? 'bg-gray-100 text-gray-900' : 'text-gray-700',
+                  'px-3 py-1.5 rounded-md text-sm hover:bg-gray-100'
+                )}
+              >
+                Browse
+              </Link>
+              <Link
+                href="/my-needs"
+                className={classNames(
+                  isActive('/my-needs') ? 'bg-gray-100 text-gray-900' : 'text-gray-700',
+                  'px-3 py-1.5 rounded-md text-sm hover:bg-gray-100'
+                )}
+              >
+                My Needs
+              </Link>
+              <Link
+                href="/needs/new"
+                className="px-3 py-1.5 rounded-md text-sm bg-blue-600 text-white hover:bg-blue-700"
+              >
+                + Create
+              </Link>
+              {displayIsAdmin && (
+                <Link
+                  href="/admin"
+                  className={classNames(
+                    isActive('/admin') ? 'bg-gray-100 text-gray-900' : 'text-gray-700',
+                    'px-3 py-1.5 rounded-md text-sm hover:bg-gray-100'
+                  )}
+                >
+                  Admin
+                </Link>
+              )}
+            </nav>
+
             {/* Right: icons + user menu */}
             <div className="flex items-center gap-2">
-              {/* Optional: notification icon placeholder */}
               <button
                 type="button"
                 className="hidden sm:inline-flex items-center justify-center rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
@@ -187,9 +245,9 @@ export function Header({ onMenuClick }: HeaderProps) {
         </div>
       </header>
 
-      {/* MOBILE DRAWER (only used when no onMenuClick is provided) */}
+      {/* MOBILE DRAWER */}
       <Transition.Root show={mobileOpen} as={Fragment}>
-        <Dialog as="div" className="relative z-50" onClose={setMobileOpen}>
+        <Dialog as="div" className="relative z-50 sm:hidden" onClose={setMobileOpen}>
           <Transition.Child
             as={Fragment}
             enter="transition-opacity ease-linear duration-200"
@@ -216,7 +274,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                 <div className="flex items-center justify-between px-4 py-4 border-b">
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-lg bg-purple-600 text-white flex items-center justify-center font-semibold">
-                      {user?.full_name?.[0]?.toUpperCase() || 'A'}
+                      {initials}
                     </div>
                     <div className="min-w-0">
                       <div className="text-sm font-semibold text-gray-900 truncate">
@@ -228,59 +286,53 @@ export function Header({ onMenuClick }: HeaderProps) {
 
                   <button
                     type="button"
-                    className="rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-                    onClick={() => setMobileOpen(false)}
+                    onClick={closeMobile}
+                    className="rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-600"
                     aria-label="Close menu"
                   >
-                    <XMarkIcon className="h-6 w-6" />
+                    <XMarkIcon className="h-6 w-6" aria-hidden="true" />
                   </button>
                 </div>
 
-                <nav className="px-2 py-3">
+                <div className="px-2 py-3">
                   <div className="space-y-1">
                     {visibleNav.map((item) => {
-                      const isActive =
-                        item.href === '/'
-                          ? pathname === '/'
-                          : pathname?.startsWith(item.href);
-
+                      const active = isActive(item.href);
                       const Icon = item.icon;
 
+                      // Use buttons for reliable "close then navigate"
                       return (
-                        <Link
+                        <button
                           key={item.href}
-                          href={item.href}
-                          onClick={() => setMobileOpen(false)}
+                          type="button"
+                          onClick={() => go(item.href)}
                           className={classNames(
-                            isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50',
-                            'flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium'
+                            active ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100',
+                            'w-full flex items-center gap-3 rounded-md px-3 py-2 text-left text-sm font-medium'
                           )}
                         >
-                          <Icon className={classNames(isActive ? 'text-blue-700' : 'text-gray-400', 'h-5 w-5')} />
+                          <Icon className={classNames(active ? 'text-blue-700' : 'text-gray-500', 'h-5 w-5')} />
                           {item.name}
-                        </Link>
+                        </button>
                       );
                     })}
                   </div>
 
-                  <div className="mt-4 border-t pt-3">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setMobileOpen(false);
-                        await signOut();
-                      }}
-                      className="w-full flex items-center gap-3 rounded-md px-3 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                    >
-                      <ArrowRightOnRectangleIcon className="h-5 w-5 text-gray-400" />
-                      Sign out
-                    </button>
-                  </div>
-                </nav>
+                  <div className="my-3 border-t" />
+
+                  <button
+                    type="button"
+                    onClick={handleSignOut}
+                    className="w-full flex items-center gap-3 rounded-md px-3 py-2 text-left text-sm font-medium text-gray-700 hover:bg-gray-100"
+                  >
+                    <ArrowRightOnRectangleIcon className="h-5 w-5 text-gray-500" />
+                    Sign out
+                  </button>
+                </div>
               </Dialog.Panel>
             </Transition.Child>
 
-            {/* spacer */}
+            {/* Spacer */}
             <div className="flex-1" />
           </div>
         </Dialog>
@@ -288,5 +340,3 @@ export function Header({ onMenuClick }: HeaderProps) {
     </>
   );
 }
-
-export default Header;
