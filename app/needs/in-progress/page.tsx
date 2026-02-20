@@ -34,11 +34,11 @@ interface Need {
   need_categories: { name: string } | null;
 }
 
-const urgencyColors: Record<string, string> = {
-  LOW: 'bg-gray-100 text-gray-600',
-  MEDIUM: 'bg-blue-100 text-blue-700',
-  HIGH: 'bg-orange-100 text-orange-700',
-  CRITICAL: 'bg-red-100 text-red-700',
+const urgencyBarColors: Record<string, string> = {
+  LOW: 'bg-gray-300',
+  MEDIUM: 'bg-blue-500',
+  HIGH: 'bg-orange-500',
+  CRITICAL: 'bg-red-500',
 };
 
 function getNeedTypeLabel(needType: string) {
@@ -86,16 +86,12 @@ export default function NeedsInProgressPage() {
   const [error, setError] = useState<string | null>(null);
 
   const supabase = useMemo(() => createClientComponentClient(), []);
-
-  // In impersonation mode, behave like the impersonated org user.
   const effectiveIsSuperAdmin = useMemo(() => isSuperAdmin && !isImpersonating, [isSuperAdmin, isImpersonating]);
 
   useEffect(() => {
     const fetchNeeds = async () => {
       try {
         if (!user) return;
-
-        setLoading(true);
 
         if (!effectiveIsSuperAdmin && !organization?.id) {
           setNeeds([]);
@@ -117,21 +113,10 @@ export default function NeedsInProgressPage() {
             claimed_at,
             requester_user_id,
             claimed_by,
-
-            requester:requester_user_id (
-              full_name,
-              email,
-              groups:group_id (name)
-            ),
-
-            helper:claimed_by (
-              full_name,
-              email,
-              groups:group_id (name)
-            ),
-
+            requester:requester_user_id (full_name,email),
+            helper:claimed_by (full_name,email),
             organizations (display_name),
-            groups:group_id (name),
+            groups (name),
             need_categories:category_id (name)
           `
           )
@@ -139,7 +124,6 @@ export default function NeedsInProgressPage() {
           .order('claimed_at', { ascending: false })
           .order('created_at', { ascending: false });
 
-        // Tenant isolation in UI for normal users and while impersonating
         if (!effectiveIsSuperAdmin && organization?.id) {
           query = query.eq('organization_id', organization.id);
         }
@@ -167,9 +151,7 @@ export default function NeedsInProgressPage() {
       }
     };
 
-    if (!authLoading) {
-      fetchNeeds();
-    }
+    if (!authLoading) fetchNeeds();
   }, [authLoading, user, organization?.id, effectiveIsSuperAdmin, supabase]);
 
   if (authLoading || loading) {
@@ -208,84 +190,58 @@ export default function NeedsInProgressPage() {
           <HandRaisedIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
           <p className="text-gray-500 text-lg">No needs are currently in progress.</p>
           <p className="text-gray-400 mt-2">When someone claims a need, it will appear here.</p>
-          <div className="mt-4 flex justify-center gap-2">
-            <Link href="/needs">
-              <Button variant="outline">Browse Open Needs</Button>
-            </Link>
-            <Link href="/needs/new">
-              <Button>Create a Need</Button>
-            </Link>
-          </div>
         </div>
       ) : (
         <div className="grid gap-4">
           {needs.map((need) => {
+            const bar = urgencyBarColors[need.urgency] || 'bg-gray-300';
+
             const orgName = need.organizations?.display_name || 'Organization';
             const needGroupName = need.groups?.name || 'No group';
 
             const requesterName = need.requester?.full_name || 'Unknown';
-            const requesterGroup = need.requester?.groups?.name || 'No group';
-
             const helperName = need.helper?.full_name || 'Unassigned';
-            const helperGroup = need.helper?.groups?.name || 'No group';
 
             return (
-              <div key={need.id} className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2 flex-wrap">
-                      <h3 className="text-lg font-semibold text-gray-900">{need.title}</h3>
+              <div key={need.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow">
+                <div className="flex gap-4">
+                  {/* Urgency color bar */}
+                  <div className={`w-1 rounded-full ${bar}`} />
 
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          urgencyColors[need.urgency] || 'bg-gray-100 text-gray-600'
-                        }`}
-                      >
-                        {need.urgency}
-                      </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="text-lg font-semibold text-gray-900 truncate">{need.title}</h3>
+                          <span className="text-xs text-gray-500">{getNeedTypeLabel(need.need_type)}</span>
+                          <span className="text-xs text-gray-500">•</span>
+                          <span className="text-xs text-gray-500">{need.urgency}</span>
+                        </div>
 
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                        {getNeedTypeLabel(need.need_type)}
-                      </span>
+                        <p className="text-sm text-gray-500 mt-1">
+                          {orgName} • {needGroupName}
+                        </p>
 
-                      {need.need_categories?.name && (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          {need.need_categories.name}
-                        </span>
-                      )}
-                    </div>
+                        <div className="mt-3 text-sm text-gray-700 space-y-1">
+                          <div>
+                            Requested by <span className="font-medium">{requesterName}</span>
+                          </div>
+                          <div>
+                            Claimed by <span className="font-medium">{helperName}</span>
+                          </div>
+                        </div>
 
-                    <p className="text-sm text-gray-500 mb-2">
-                      <span className="font-medium text-gray-800">{orgName}</span>
-                      {' • '}
-                      <span className="font-medium text-gray-800">{needGroupName}</span>
-                      {' • '}
-                      Claimed {formatDateTime(need.claimed_at)}
-                      {' • '}
-                      Created {formatDate(need.created_at)}
-                    </p>
+                        <p className="text-gray-600 mt-3 line-clamp-2">{need.description}</p>
 
-                    <p className="text-gray-600 line-clamp-2">{need.description}</p>
-
-                    {/* Goal: clearly show who submitted and who claimed */}
-                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                      <div className="rounded-lg border bg-gray-50 p-3">
-                        <div className="text-gray-500">Submitted by</div>
-                        <div className="font-semibold text-gray-900">{requesterName}</div>
-                        <div className="text-gray-600">{requesterGroup}</div>
+                        <p className="text-xs text-gray-400 mt-3">
+                          Claimed {formatDateTime(need.claimed_at)} • Created {formatDate(need.created_at)}
+                        </p>
                       </div>
 
-                      <div className="rounded-lg border bg-gray-50 p-3">
-                        <div className="text-gray-500">Claimed by</div>
-                        <div className="font-semibold text-gray-900">{helperName}</div>
-                        <div className="text-gray-600">{helperGroup}</div>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 flex justify-end">
                       <Link href={`/needs/${need.id}`}>
-                        <Button variant="outline" size="sm">
-                          View Details
+                        <Button size="sm">
+                          <HandRaisedIcon className="h-4 w-4 mr-1" />
+                          View
                         </Button>
                       </Link>
                     </div>
