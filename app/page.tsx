@@ -9,7 +9,7 @@ import {
   PlusIcon,
   ClipboardDocumentListIcon,
   UserGroupIcon,
-  Cog6ToothIcon
+  Cog6ToothIcon,
 } from '@heroicons/react/24/outline';
 
 export default function HomePage() {
@@ -41,42 +41,64 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex flex-col gap-3">
             {/* Top row: Brand + user actions */}
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
               <h1 className="text-2xl font-bold text-gray-900">AtriumHub</h1>
 
-              <div className="flex items-center gap-4">
-                <span className="text-sm text-gray-600">Welcome, {user.full_name}</span>
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                {/* Hide this on mobile to prevent crowding */}
+                <span className="hidden sm:inline text-sm text-gray-600">
+                  Welcome, {user.full_name}
+                </span>
+
                 <Link href="/profile">
-                  <Button variant="outline" size="sm">Profile</Button>
+                  <Button variant="outline" size="sm" className="w-full sm:w-auto">
+                    Profile
+                  </Button>
                 </Link>
-                <Button variant="outline" size="sm" onClick={signOut}>Sign Out</Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={signOut}
+                  className="w-full sm:w-auto"
+                >
+                  Sign Out
+                </Button>
               </div>
             </div>
 
             {/* User top menu */}
-            <nav className="flex flex-wrap items-center gap-2">
-              <Link href="/needs">
-                <Button variant="outline" size="sm">Browse Needs</Button>
+            <nav className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
+              <Link href="/needs" className="w-full sm:w-auto">
+                <Button variant="outline" size="sm" className="w-full sm:w-auto justify-center">
+                  Browse Needs
+                </Button>
               </Link>
 
-              <Link href="/needs/in-progress">
-                <Button variant="outline" size="sm">In Progress</Button>
+              <Link href="/needs/in-progress" className="w-full sm:w-auto">
+                <Button variant="outline" size="sm" className="w-full sm:w-auto justify-center">
+                  In Progress
+                </Button>
               </Link>
 
-              <Link href="/my-needs">
-                <Button variant="outline" size="sm">My Needs</Button>
+              <Link href="/my-needs" className="w-full sm:w-auto">
+                <Button variant="outline" size="sm" className="w-full sm:w-auto justify-center">
+                  My Needs
+                </Button>
               </Link>
 
-              <Link href="/needs/new">
-                <Button size="sm">
+              <Link href="/needs/new" className="w-full sm:w-auto">
+                <Button size="sm" className="w-full sm:w-auto justify-center">
                   <PlusIcon className="h-4 w-4 mr-2" />
                   Create a Need
                 </Button>
               </Link>
 
               {displayIsAdmin && (
-                <Link href="/admin">
-                  <Button variant="outline" size="sm">Admin</Button>
+                <Link href="/admin" className="w-full sm:w-auto">
+                  <Button variant="outline" size="sm" className="w-full sm:w-auto justify-center">
+                    Admin
+                  </Button>
                 </Link>
               )}
             </nav>
@@ -87,12 +109,8 @@ export default function HomePage() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">
-            Welcome to AtriumHub
-          </h2>
-          <p className="text-gray-600">
-            Your needs-sharing platform. What would you like to do?
-          </p>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Welcome to AtriumHub</h2>
+          <p className="text-gray-600">Your needs-sharing platform. What would you like to do?</p>
         </div>
 
         {/* Quick Actions */}
