@@ -209,7 +209,7 @@ export default function NeedsInProgressPage() {
                   <div className={`w-1 rounded-full ${bar}`} />
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-4 min-w-0">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4 min-w-0">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="text-lg font-semibold text-gray-900 truncate">{need.title}</h3>
@@ -238,7 +238,7 @@ export default function NeedsInProgressPage() {
                         </p>
                       </div>
 
-                      <Link href={`/needs/${need.id}`}>
+                      <Link href={`/needs/`} className="self-start sm:self-auto shrink-0">
                         <Button size="sm">
                           <HandRaisedIcon className="h-4 w-4 mr-1" />
                           View
