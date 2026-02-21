@@ -15,17 +15,30 @@ export const metadata: Metadata = {
   description: 'Help your community by sharing and fulfilling needs',
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function PoweredByFooter() {
+  return (
+    <footer className="mt-auto border-t bg-white">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4">
+        <div className="text-center text-xs text-gray-500">
+          Powered by <span className="font-medium text-gray-700">AtriumHub</span> —{' '}
+          <span className="font-medium text-gray-700">IEI</span>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body className={inter.variable}>
         <AuthProvider>
-          <ImpersonationBanner />
-          {children}
+          <div className="min-h-screen flex flex-col">
+            <ImpersonationBanner />
+            <main className="flex-1">{children}</main>
+            <PoweredByFooter />
+          </div>
+
           <Toaster
             position="top-right"
             toastOptions={{
