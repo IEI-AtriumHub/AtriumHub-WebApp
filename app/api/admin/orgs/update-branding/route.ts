@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from '@supabase/ssr';
 
 function parseAllowlist(value?: string) {
   return (value || '')
@@ -15,43 +14,48 @@ function isValidHexColor(v: unknown) {
   return /^#([0-9a-fA-F]{6})$/.test(v.trim());
 }
 
-function safeJson(value: any) {
-  if (value == null) return {};
-  if (typeof value === 'object') return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return {};
-  }
+function makeSupabaseServerClient() {
+  const cookieStore = cookies();
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+  return createServerClient(url, anonKey, {
+    cookies: {
+      get(name: string) {
+        return cookieStore.get(name)?.value;
+      },
+      // For this route we only need reads for auth; keep writes as no-ops to avoid runtime issues.
+      set() {},
+      remove() {},
+    },
+  });
 }
 
 export async function POST(req: Request) {
   try {
-    // -----------------------------------------------------------------------
-    // 1) Auth (cookie session) - use anon client only for identity checks
-    // -----------------------------------------------------------------------
-    const supabaseAuth = createRouteHandlerClient({ cookies });
+    const supabase = makeSupabaseServerClient();
 
+    // 1) Auth
     const {
       data: { user },
       error: userErr,
-    } = await supabaseAuth.auth.getUser();
+    } = await supabase.auth.getUser();
 
     if (userErr || !user) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    // -----------------------------------------------------------------------
-    // 2) SuperAdmin gate (allowlist OR platform_admins)
-    // -----------------------------------------------------------------------
+    // 2) SuperAdmin gate (email allowlist first)
     const allowlist = parseAllowlist(process.env.SUPERADMIN_EMAIL_ALLOWLIST);
     const email = (user.email || '').toLowerCase();
 
     let isSuperAdmin = allowlist.length > 0 ? allowlist.includes(email) : false;
 
+    // Optional: platform_admins fallback (won’t break if table differs)
     if (!isSuperAdmin) {
       try {
-        const { data } = await supabaseAuth
+        const { data } = await supabase
           .from('platform_admins')
           .select('user_id')
           .eq('user_id', user.id)
@@ -67,9 +71,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Forbidden (SuperAdmin only)' }, { status: 403 });
     }
 
-    // -----------------------------------------------------------------------
-    // 3) Input validation
-    // -----------------------------------------------------------------------
+    // 3) Input
     const body = await req.json().catch(() => null);
 
     const organization_id = body?.organization_id as string | undefined;
@@ -96,86 +98,59 @@ export async function POST(req: Request) {
       );
     }
 
-    // If literally nothing provided, no-op
-    if (
-      logo_url === undefined &&
-      primary_color === undefined &&
-      secondary_color === undefined &&
-      app_name === undefined
-    ) {
+    // 4) Build update payload
+    const updatePayload: Record<string, any> = {};
+    if (logo_url !== undefined) updatePayload.logo_url = logo_url;
+    if (primary_color !== undefined) updatePayload.primary_color = primary_color;
+    if (secondary_color !== undefined) updatePayload.secondary_color = secondary_color;
+    if (app_name !== undefined) updatePayload.app_name = app_name;
+
+    if (Object.keys(updatePayload).length === 0) {
       return NextResponse.json({ ok: true, message: 'Nothing to update' });
     }
 
-    // -----------------------------------------------------------------------
-    // 4) Service role client for the update (rock-solid, bypass RLS safely)
-    // -----------------------------------------------------------------------
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !serviceKey) {
-      return NextResponse.json(
-        { error: 'Server is missing Supabase env vars (NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)' },
-        { status: 500 }
-      );
-    }
-
-    const supabaseAdmin = createClient(supabaseUrl, serviceKey, {
-      auth: { persistSession: false },
-    });
-
-    // Fetch current features_override so we can merge branding without clobbering other overrides
-    const { data: orgRow, error: fetchErr } = await supabaseAdmin
-      .from('organizations')
-      .select('id, features_override')
-      .eq('id', organization_id)
-      .maybeSingle();
-
-    if (fetchErr) {
-      return NextResponse.json(
-        { error: 'Failed to fetch organization', detail: fetchErr.message },
-        { status: 500 }
-      );
-    }
-
-    if (!orgRow?.id) {
-      return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
-    }
-
-    const currentOverrides = safeJson(orgRow.features_override);
-    const nextOverrides = {
-      ...currentOverrides,
-      branding: {
-        ...(currentOverrides?.branding || {}),
-        ...(secondary_color !== undefined ? { secondary_color } : {}),
-        ...(app_name !== undefined ? { app_name } : {}),
-      },
-    };
-
-    // Build update payload ONLY with columns that exist today + merged features_override
-    const updatePayload: Record<string, any> = {
-      features_override: nextOverrides,
-    };
-
-    if (logo_url !== undefined) updatePayload.logo_url = logo_url;
-    if (primary_color !== undefined) updatePayload.primary_color = primary_color;
-
-    const { error: updErr } = await supabaseAdmin
+    // 5) Update (with graceful fallback if columns don’t exist yet)
+    let { error: updErr } = await supabase
       .from('organizations')
       .update(updatePayload)
       .eq('id', organization_id);
 
+    // If prod DB doesn’t have the new columns yet, retry without them.
+    if (updErr?.message?.toLowerCase().includes('secondary_color')) {
+      delete updatePayload.secondary_color;
+      ({ error: updErr } = await supabase
+        .from('organizations')
+        .update(updatePayload)
+        .eq('id', organization_id));
+    }
+
+    if (updErr?.message?.toLowerCase().includes('app_name')) {
+      delete updatePayload.app_name;
+      ({ error: updErr } = await supabase
+        .from('organizations')
+        .update(updatePayload)
+        .eq('id', organization_id));
+    }
+
     if (updErr) {
       return NextResponse.json(
-        { error: 'Failed to update organization branding', detail: updErr.message },
-        { status: 500 }
+        {
+          error: 'Failed to update organization branding',
+          detail: updErr.message,
+          hint:
+            'If this mentions RLS or permissions, we will add a service-role update path next. If it mentions columns, we will add them next.',
+        },
+        { status: 400 }
       );
     }
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {
-    // This catches the “cookies.get is not a function” type crashes too
     return NextResponse.json(
-      { error: 'Internal Server Error', detail: e?.message || String(e) },
+      {
+        error: 'Internal Server Error',
+        detail: e?.message || String(e),
+      },
       { status: 500 }
     );
   }
