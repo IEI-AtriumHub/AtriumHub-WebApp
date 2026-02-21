@@ -3,8 +3,6 @@ import { cookies } from 'next/headers';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { createClient } from '@supabase/supabase-js';
 
-export const runtime = 'nodejs';
-
 function parseAllowlist(value?: string) {
   return (value || '')
     .split(',')
@@ -17,148 +15,149 @@ function isValidHexColor(v: unknown) {
   return /^#([0-9a-fA-F]{6})$/.test(v.trim());
 }
 
-function safeString(v: unknown): string | null | undefined {
-  if (v === undefined) return undefined;
-  if (v === null) return null;
-  if (typeof v !== 'string') return undefined;
-  const t = v.trim();
-  return t === '' ? '' : t;
+function safeObject(value: unknown): Record<string, any> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : {};
 }
 
 export async function POST(req: Request) {
-  try {
-    // 0) Required env for service client
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  // ✅ IMPORTANT: use a cookieStore instance (cookies()) — fixes "get is not a function"
+  const cookieStore = cookies();
+  const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
 
-    if (!url || !serviceKey) {
-      return NextResponse.json(
-        {
-          error: 'Server misconfigured',
-          detail:
-            'Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY on the server.',
-        },
-        { status: 500 }
-      );
-    }
+  // 1) Auth
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
 
-    // 1) User session client (cookie auth) — ONLY for identifying the caller
-    const supabaseUser = createRouteHandlerClient({ cookies });
+  if (userErr || !user) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
 
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabaseUser.auth.getUser();
+  // 2) SuperAdmin gate (email allowlist first)
+  const allowlist = parseAllowlist(process.env.SUPERADMIN_EMAIL_ALLOWLIST);
+  const email = (user.email || '').toLowerCase();
 
-    if (userErr || !user) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
+  let isSuperAdmin = allowlist.length > 0 ? allowlist.includes(email) : false;
 
-    // 2) Service-role client — for SuperAdmin check (platform_admins) + update
-    const supabaseService = createClient(url, serviceKey, {
-      auth: { persistSession: false },
-    });
-
-    // 3) SuperAdmin gate
-    const allowlist = parseAllowlist(process.env.SUPERADMIN_EMAIL_ALLOWLIST);
-    const email = (user.email || '').toLowerCase();
-    let isSuperAdmin = allowlist.length > 0 ? allowlist.includes(email) : false;
-
-    if (!isSuperAdmin) {
-      const { data: pa, error: paErr } = await supabaseService
+  // Optional: also try platform_admins table
+  if (!isSuperAdmin) {
+    try {
+      const { data } = await supabase
         .from('platform_admins')
         .select('user_id')
         .eq('user_id', user.id)
         .maybeSingle();
 
-      if (paErr) {
-        // Don't fail hard here; just report if you want to debug
-        // (but still keep it forbidden unless allowlist hits)
-      }
-      if (pa?.user_id) isSuperAdmin = true;
+      if (data?.user_id) isSuperAdmin = true;
+    } catch {
+      // ignore
     }
+  }
 
-    if (!isSuperAdmin) {
-      return NextResponse.json(
-        { error: 'Forbidden (SuperAdmin only)' },
-        { status: 403 }
-      );
-    }
+  if (!isSuperAdmin) {
+    return NextResponse.json({ error: 'Forbidden (SuperAdmin only)' }, { status: 403 });
+  }
 
-    // 4) Input
-    const body = await req.json().catch(() => null);
+  // 3) Input
+  const body = await req.json().catch(() => null);
 
-    const organization_id = safeString(body?.organization_id) as
-      | string
-      | undefined;
+  const organization_id = body?.organization_id as string | undefined;
+  const logo_url = body?.logo_url as string | null | undefined;
+  const primary_color = body?.primary_color as string | null | undefined;
+  const secondary_color = body?.secondary_color as string | null | undefined;
+  const app_name = body?.app_name as string | null | undefined;
 
-    const logo_url = safeString(body?.logo_url);
-    const primary_color = safeString(body?.primary_color);
-    const secondary_color = safeString(body?.secondary_color);
-    const app_name = safeString(body?.app_name);
+  if (!organization_id) {
+    return NextResponse.json({ error: 'organization_id is required' }, { status: 400 });
+  }
 
-    if (!organization_id) {
-      return NextResponse.json(
-        { error: 'organization_id is required' },
-        { status: 400 }
-      );
-    }
-
-    if (primary_color != null && primary_color !== '' && !isValidHexColor(primary_color)) {
-      return NextResponse.json(
-        { error: 'primary_color must be a hex value like #1A2B3C' },
-        { status: 400 }
-      );
-    }
-
-    if (secondary_color != null && secondary_color !== '' && !isValidHexColor(secondary_color)) {
-      return NextResponse.json(
-        { error: 'secondary_color must be a hex value like #1A2B3C' },
-        { status: 400 }
-      );
-    }
-
-    // 5) Update payload (only include provided fields)
-    const updatePayload: Record<string, any> = {};
-    if (logo_url !== undefined) updatePayload.logo_url = logo_url === '' ? null : logo_url;
-    if (primary_color !== undefined) updatePayload.primary_color = primary_color === '' ? null : primary_color;
-    if (secondary_color !== undefined) updatePayload.secondary_color = secondary_color === '' ? null : secondary_color;
-    if (app_name !== undefined) updatePayload.app_name = app_name === '' ? null : app_name;
-
-    if (Object.keys(updatePayload).length === 0) {
-      return NextResponse.json({ ok: true, message: 'Nothing to update' });
-    }
-
-    // 6) Perform update using service role (avoids RLS surprises)
-    const { data: updated, error: updErr } = await supabaseService
-      .from('organizations')
-      .update(updatePayload)
-      .eq('id', organization_id)
-      .select('id, display_name, logo_url, primary_color, secondary_color, app_name')
-      .maybeSingle();
-
-    if (updErr) {
-      return NextResponse.json(
-        {
-          error: 'Failed to update organization branding',
-          detail: updErr.message,
-          code: (updErr as any).code,
-          hint:
-            'If this mentions missing columns (logo_url/primary_color/secondary_color/app_name), we need to add them via a migration.',
-        },
-        { status: 400 }
-      );
-    }
-
-    return NextResponse.json({ ok: true, organization: updated });
-  } catch (e: any) {
-    // Absolute last-resort: never leak a blank 500
+  if (primary_color != null && primary_color !== '' && !isValidHexColor(primary_color)) {
     return NextResponse.json(
-      {
-        error: 'Internal Server Error',
-        detail: e?.message || String(e),
-      },
+      { error: 'primary_color must be a hex value like #1A2B3C' },
+      { status: 400 }
+    );
+  }
+
+  if (secondary_color != null && secondary_color !== '' && !isValidHexColor(secondary_color)) {
+    return NextResponse.json(
+      { error: 'secondary_color must be a hex value like #1A2B3C' },
+      { status: 400 }
+    );
+  }
+
+  // 4) Service role client (bypasses RLS)
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url || !serviceKey) {
+    return NextResponse.json(
+      { error: 'Server misconfigured: missing SUPABASE env vars' },
       { status: 500 }
     );
   }
+
+  const admin = createClient(url, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  // 5) Build update payload
+  // Your organizations table currently has: logo_url, primary_color, features_override
+  // It does NOT have: secondary_color, app_name
+  // So we store those under features_override.branding
+  const updatePayload: Record<string, any> = {};
+
+  if (logo_url !== undefined) updatePayload.logo_url = logo_url;
+  if (primary_color !== undefined) updatePayload.primary_color = primary_color;
+
+  // Only touch features_override if secondary_color or app_name was provided
+  if (secondary_color !== undefined || app_name !== undefined) {
+    const { data: existing, error: readErr } = await admin
+      .from('organizations')
+      .select('features_override')
+      .eq('id', organization_id)
+      .maybeSingle();
+
+    if (readErr) {
+      return NextResponse.json(
+        { error: 'Failed to read existing organization features_override', detail: readErr.message },
+        { status: 400 }
+      );
+    }
+
+    const current = safeObject(existing?.features_override);
+    const currentBranding = safeObject(current.branding);
+
+    const nextBranding = {
+      ...currentBranding,
+      ...(app_name !== undefined ? { app_name } : {}),
+      ...(secondary_color !== undefined ? { secondary_color } : {}),
+    };
+
+    updatePayload.features_override = {
+      ...current,
+      branding: nextBranding,
+    };
+  }
+
+  if (Object.keys(updatePayload).length === 0) {
+    return NextResponse.json({ ok: true, message: 'Nothing to update' });
+  }
+
+  const { error: updErr } = await admin
+    .from('organizations')
+    .update(updatePayload)
+    .eq('id', organization_id);
+
+  if (updErr) {
+    return NextResponse.json(
+      {
+        error: 'Failed to update organization branding',
+        detail: updErr.message,
+      },
+      { status: 400 }
+    );
+  }
+
+  return NextResponse.json({ ok: true });
 }
