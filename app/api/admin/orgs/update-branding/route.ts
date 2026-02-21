@@ -14,29 +14,33 @@ function isValidHexColor(v: unknown) {
   return /^#([0-9a-fA-F]{6})$/.test(v.trim());
 }
 
-function makeSupabaseServerClient() {
-  const cookieStore = cookies();
-
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-  return createServerClient(url, anonKey, {
-    cookies: {
-      get(name: string) {
-        return cookieStore.get(name)?.value;
-      },
-      // For this route we only need reads for auth; keep writes as no-ops to avoid runtime issues.
-      set() {},
-      remove() {},
-    },
-  });
-}
-
 export async function POST(req: Request) {
   try {
-    const supabase = makeSupabaseServerClient();
+    // IMPORTANT: in your Next/TS setup, cookies() is async (typed as Promise<...>)
+    const cookieStore = await cookies();
 
-    // 1) Auth
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!url || !anonKey) {
+      return NextResponse.json(
+        { error: 'Server misconfigured', detail: 'Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY' },
+        { status: 500 }
+      );
+    }
+
+    const supabase = createServerClient(url, anonKey, {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+        // We only need reads for auth on this route; no-ops are fine
+        set() {},
+        remove() {},
+      },
+    });
+
+    // 1) Auth (cookie session)
     const {
       data: { user },
       error: userErr,
@@ -49,10 +53,9 @@ export async function POST(req: Request) {
     // 2) SuperAdmin gate (email allowlist first)
     const allowlist = parseAllowlist(process.env.SUPERADMIN_EMAIL_ALLOWLIST);
     const email = (user.email || '').toLowerCase();
-
     let isSuperAdmin = allowlist.length > 0 ? allowlist.includes(email) : false;
 
-    // Optional: platform_admins fallback (won’t break if table differs)
+    // Optional: platform_admins fallback
     if (!isSuperAdmin) {
       try {
         const { data } = await supabase
@@ -98,7 +101,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 4) Build update payload
+    // 4) Update payload
     const updatePayload: Record<string, any> = {};
     if (logo_url !== undefined) updatePayload.logo_url = logo_url;
     if (primary_color !== undefined) updatePayload.primary_color = primary_color;
@@ -109,27 +112,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, message: 'Nothing to update' });
     }
 
-    // 5) Update (with graceful fallback if columns don’t exist yet)
+    // 5) Update (graceful fallback if columns don’t exist yet)
     let { error: updErr } = await supabase
       .from('organizations')
       .update(updatePayload)
       .eq('id', organization_id);
 
-    // If prod DB doesn’t have the new columns yet, retry without them.
     if (updErr?.message?.toLowerCase().includes('secondary_color')) {
       delete updatePayload.secondary_color;
-      ({ error: updErr } = await supabase
-        .from('organizations')
-        .update(updatePayload)
-        .eq('id', organization_id));
+      ({ error: updErr } = await supabase.from('organizations').update(updatePayload).eq('id', organization_id));
     }
 
     if (updErr?.message?.toLowerCase().includes('app_name')) {
       delete updatePayload.app_name;
-      ({ error: updErr } = await supabase
-        .from('organizations')
-        .update(updatePayload)
-        .eq('id', organization_id));
+      ({ error: updErr } = await supabase.from('organizations').update(updatePayload).eq('id', organization_id));
     }
 
     if (updErr) {
@@ -137,8 +133,6 @@ export async function POST(req: Request) {
         {
           error: 'Failed to update organization branding',
           detail: updErr.message,
-          hint:
-            'If this mentions RLS or permissions, we will add a service-role update path next. If it mentions columns, we will add them next.',
         },
         { status: 400 }
       );
@@ -147,10 +141,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     return NextResponse.json(
-      {
-        error: 'Internal Server Error',
-        detail: e?.message || String(e),
-      },
+      { error: 'Internal Server Error', detail: e?.message || String(e) },
       { status: 500 }
     );
   }
