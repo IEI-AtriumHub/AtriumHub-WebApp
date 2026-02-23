@@ -102,38 +102,41 @@ export default function HomePage() {
   if (!user) return null;
 
   return (
-    <PageContainer
-      requireAuth
-      title="Happening Now"
-      actions={
-        <div className="flex justify-end gap-2 flex-wrap">
-          <Link href="/needs">
-            <Button variant="outline" size="sm">
-              Browse
-            </Button>
-          </Link>
+    <PageContainer requireAuth>
+      {/* Buttons row FIRST */}
+      <div className="flex justify-end gap-2 flex-wrap mb-4">
+        <Link href="/needs">
+          <Button variant="outline" size="sm">
+            Browse
+          </Button>
+        </Link>
 
-          <Link href="/needs/in-progress">
-            <Button variant="outline" size="sm">
-              In Progress
-            </Button>
-          </Link>
+        <Link href="/needs/in-progress">
+          <Button variant="outline" size="sm">
+            In Progress
+          </Button>
+        </Link>
 
-          <Link href="/my-needs">
-            <Button variant="outline" size="sm">
-              My Needs
-            </Button>
-          </Link>
+        <Link href="/my-needs">
+          <Button variant="outline" size="sm">
+            My Needs
+          </Button>
+        </Link>
 
-          <Link href="/needs/new">
-            <Button size="sm">
-              <PlusIcon className="h-4 w-4 mr-2" />
-              Create Need
-            </Button>
-          </Link>
-        </div>
-      }
-    >
+        <Link href="/needs/new">
+          <Button size="sm">
+            <PlusIcon className="h-4 w-4 mr-2" />
+            Create Need
+          </Button>
+        </Link>
+      </div>
+
+      {/* Then the section header */}
+      <div className="mb-4">
+        <h2 className="text-2xl font-bold text-gray-900">Happening Now</h2>
+      </div>
+
+      {/* Then the list */}
       {loadingNeeds ? (
         <div className="text-gray-500 text-sm">Loading needs...</div>
       ) : recentNeeds.length === 0 ? (
