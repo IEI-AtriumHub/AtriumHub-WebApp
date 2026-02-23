@@ -103,8 +103,9 @@ export default function HomePage() {
 
   return (
     <PageContainer requireAuth>
-      {/* Buttons row FIRST */}
-      <div className="flex justify-end gap-2 flex-wrap mb-4">
+
+      {/* NAV BUTTONS — LEFT ALIGNED */}
+      <div className="flex gap-2 flex-wrap mb-4">
         <Link href="/needs">
           <Button variant="outline" size="sm">
             Browse
@@ -131,12 +132,12 @@ export default function HomePage() {
         </Link>
       </div>
 
-      {/* Then the section header */}
+      {/* SECTION TITLE */}
       <div className="mb-4">
         <h2 className="text-2xl font-bold text-gray-900">Happening Now</h2>
       </div>
 
-      {/* Then the list */}
+      {/* NEED LIST */}
       {loadingNeeds ? (
         <div className="text-gray-500 text-sm">Loading needs...</div>
       ) : recentNeeds.length === 0 ? (
