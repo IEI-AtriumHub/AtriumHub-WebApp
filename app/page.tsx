@@ -38,7 +38,8 @@ function urgencyBarClass(urgency: string | null | undefined) {
 }
 
 export default function HomePage() {
-  const { user, loading, signOut, displayIsAdmin } = useAuth();
+  const { user, loading, signOut, displayIsAdmin, organization } = useAuth();
+const brandName = (organization?.display_name || '').trim() || 'AtriumHub';
   const router = useRouter();
   const supabase = useMemo(() => createClientComponentClient(), []);
 
@@ -107,7 +108,7 @@ export default function HomePage() {
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col gap-3">
           <div className="flex justify-between items-center">
-            <h1 className="text-2xl font-bold text-gray-900">AtriumHub</h1>
+            <h1 className="text-2xl font-bold text-gray-900">{brandName}</h1>
 
             <div className="flex gap-2">
               <Link href="/profile">
