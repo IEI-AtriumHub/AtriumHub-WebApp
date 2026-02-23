@@ -70,7 +70,7 @@ export default function AdminPage() {
   const supabase = createClientComponentClient();
 
   useEffect(() => {
-    // ✅ CHANGE: allow SuperAdmin to access /admin as well
+    // Allow SuperAdmin OR Admin into /admin
     if (!authLoading && !(isAdmin || isSuperAdmin)) {
       window.location.href = '/';
       return;
@@ -80,9 +80,11 @@ export default function AdminPage() {
       try {
         const orgId = user?.organization_id;
 
+        // Needs pending approval
         let needsQuery = supabase
           .from('needs')
-          .select(`
+          .select(
+            `
             id,
             title,
             description,
@@ -92,7 +94,8 @@ export default function AdminPage() {
             users:requester_user_id (full_name, email),
             organizations (display_name),
             groups (name)
-          `)
+          `
+          )
           .eq('status', 'PENDING_APPROVAL')
           .order('submitted_at', { ascending: true });
 
@@ -112,15 +115,18 @@ export default function AdminPage() {
 
         setPendingNeeds(normalizedNeeds);
 
+        // Users pending approval
         let usersQuery = supabase
           .from('users')
-          .select(`
+          .select(
+            `
             id,
             email,
             full_name,
             created_at,
             organizations (display_name)
-          `)
+          `
+          )
           .eq('status', 'PENDING')
           .order('created_at', { ascending: true });
 
@@ -138,40 +144,33 @@ export default function AdminPage() {
 
         setPendingUsers(normalizedUsers);
 
+        // Stats
         let pendingNeedsQuery = supabase
           .from('needs')
           .select('*', { count: 'exact', head: true })
           .eq('status', 'PENDING_APPROVAL');
-        if (!isSuperAdmin && orgId) {
-          pendingNeedsQuery = pendingNeedsQuery.eq('organization_id', orgId);
-        }
+        if (!isSuperAdmin && orgId) pendingNeedsQuery = pendingNeedsQuery.eq('organization_id', orgId);
         const { count: pendingNeedsCount } = await pendingNeedsQuery;
 
         let activeNeedsQuery = supabase
           .from('needs')
           .select('*', { count: 'exact', head: true })
           .eq('status', 'APPROVED_OPEN');
-        if (!isSuperAdmin && orgId) {
-          activeNeedsQuery = activeNeedsQuery.eq('organization_id', orgId);
-        }
+        if (!isSuperAdmin && orgId) activeNeedsQuery = activeNeedsQuery.eq('organization_id', orgId);
         const { count: activeNeedsCount } = await activeNeedsQuery;
 
         let completedNeedsQuery = supabase
           .from('needs')
           .select('*', { count: 'exact', head: true })
           .eq('status', 'COMPLETED');
-        if (!isSuperAdmin && orgId) {
-          completedNeedsQuery = completedNeedsQuery.eq('organization_id', orgId);
-        }
+        if (!isSuperAdmin && orgId) completedNeedsQuery = completedNeedsQuery.eq('organization_id', orgId);
         const { count: completedNeedsCount } = await completedNeedsQuery;
 
         let pendingUsersQuery = supabase
           .from('users')
           .select('*', { count: 'exact', head: true })
           .eq('status', 'PENDING');
-        if (!isSuperAdmin && orgId) {
-          pendingUsersQuery = pendingUsersQuery.eq('organization_id', orgId);
-        }
+        if (!isSuperAdmin && orgId) pendingUsersQuery = pendingUsersQuery.eq('organization_id', orgId);
         const { count: pendingUsersCount } = await pendingUsersQuery;
 
         setStats({
@@ -180,16 +179,14 @@ export default function AdminPage() {
           activeNeeds: activeNeedsCount || 0,
           completedNeeds: completedNeedsCount || 0,
         });
-      } catch (error) {
-        console.error('Error fetching data:', error);
+      } catch (err) {
+        console.error('Error fetching admin data:', err);
       } finally {
         setLoading(false);
       }
     };
 
-    if (!authLoading && user) {
-      fetchData();
-    }
+    if (!authLoading && user) fetchData();
   }, [authLoading, user, isAdmin, isSuperAdmin, supabase]);
 
   const handleApproveNeed = async (needId: string) => {
@@ -206,11 +203,11 @@ export default function AdminPage() {
 
       if (error) throw error;
 
-      setPendingNeeds(pendingNeeds.filter(n => n.id !== needId));
-      setStats(prev => ({ ...prev, pendingNeeds: prev.pendingNeeds - 1, activeNeeds: prev.activeNeeds + 1 }));
+      setPendingNeeds((prev) => prev.filter((n) => n.id !== needId));
+      setStats((prev) => ({ ...prev, pendingNeeds: prev.pendingNeeds - 1, activeNeeds: prev.activeNeeds + 1 }));
       toast.success('Need approved successfully!');
     } catch (error: any) {
-      toast.error(error.message || 'Failed to approve need');
+      toast.error(error?.message || 'Failed to approve need');
     } finally {
       setProcessingId(null);
     }
@@ -233,11 +230,11 @@ export default function AdminPage() {
 
       if (error) throw error;
 
-      setPendingNeeds(pendingNeeds.filter(n => n.id !== needId));
-      setStats(prev => ({ ...prev, pendingNeeds: prev.pendingNeeds - 1 }));
+      setPendingNeeds((prev) => prev.filter((n) => n.id !== needId));
+      setStats((prev) => ({ ...prev, pendingNeeds: prev.pendingNeeds - 1 }));
       toast.success('Need rejected');
     } catch (error: any) {
-      toast.error(error.message || 'Failed to reject need');
+      toast.error(error?.message || 'Failed to reject need');
     } finally {
       setProcessingId(null);
     }
@@ -257,11 +254,11 @@ export default function AdminPage() {
 
       if (error) throw error;
 
-      setPendingUsers(pendingUsers.filter(u => u.id !== userId));
-      setStats(prev => ({ ...prev, pendingUsers: prev.pendingUsers - 1 }));
+      setPendingUsers((prev) => prev.filter((u) => u.id !== userId));
+      setStats((prev) => ({ ...prev, pendingUsers: prev.pendingUsers - 1 }));
       toast.success('User approved successfully!');
     } catch (error: any) {
-      toast.error(error.message || 'Failed to approve user');
+      toast.error(error?.message || 'Failed to approve user');
     } finally {
       setProcessingId(null);
     }
@@ -275,6 +272,11 @@ export default function AdminPage() {
     );
   }
 
+  // Safety: if for any reason user is absent after loading, bounce out.
+  if (!user) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white border-b border-gray-200">
@@ -284,11 +286,15 @@ export default function AdminPage() {
               AtriumHub
             </Link>
             <div className="flex items-center gap-4">
-              <span className="text-gray-600">Welcome, {user?.full_name}</span>
+              <span className="text-gray-600">Welcome, {user.full_name}</span>
               <Link href="/profile">
-                <Button variant="outline" size="sm">Profile</Button>
+                <Button variant="outline" size="sm">
+                  Profile
+                </Button>
               </Link>
-              <Button variant="outline" size="sm" onClick={signOut}>Sign Out</Button>
+              <Button variant="outline" size="sm" onClick={signOut}>
+                Sign Out
+              </Button>
             </div>
           </div>
         </div>
@@ -316,6 +322,7 @@ export default function AdminPage() {
               </div>
             </div>
           </div>
+
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center">
               <div className="p-2 bg-blue-100 rounded-lg">
@@ -327,6 +334,7 @@ export default function AdminPage() {
               </div>
             </div>
           </div>
+
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center">
               <div className="p-2 bg-green-100 rounded-lg">
@@ -338,6 +346,7 @@ export default function AdminPage() {
               </div>
             </div>
           </div>
+
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center">
               <div className="p-2 bg-purple-100 rounded-lg">
@@ -399,14 +408,11 @@ export default function AdminPage() {
 
         <div className="bg-white rounded-lg shadow mb-8">
           <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Pending Needs Approval ({pendingNeeds.length})
-            </h2>
+            <h2 className="text-lg font-semibold text-gray-900">Pending Needs Approval ({pendingNeeds.length})</h2>
           </div>
+
           {pendingNeeds.length === 0 ? (
-            <div className="p-6 text-center text-gray-500">
-              No needs pending approval
-            </div>
+            <div className="p-6 text-center text-gray-500">No needs pending approval</div>
           ) : (
             <div className="divide-y divide-gray-200">
               {pendingNeeds.map((need) => (
@@ -415,26 +421,29 @@ export default function AdminPage() {
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="font-semibold text-gray-900">{need.title}</h3>
-                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
-                          {need.need_type}
-                        </span>
-                        <span className={`text-xs px-2 py-1 rounded ${
-                          need.urgency === 'CRITICAL' ? 'bg-red-100 text-red-700' :
-                          need.urgency === 'HIGH' ? 'bg-orange-100 text-orange-700' :
-                          need.urgency === 'MEDIUM' ? 'bg-blue-100 text-blue-700' :
-                          'bg-gray-100 text-gray-600'
-                        }`}>
+                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">{need.need_type}</span>
+                        <span
+                          className={`text-xs px-2 py-1 rounded ${
+                            need.urgency === 'CRITICAL'
+                              ? 'bg-red-100 text-red-700'
+                              : need.urgency === 'HIGH'
+                              ? 'bg-orange-100 text-orange-700'
+                              : need.urgency === 'MEDIUM'
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
                           {need.urgency}
                         </span>
                       </div>
                       <p className="text-sm text-gray-500 mb-2">
-                        Requested by {need.users?.full_name || 'Unknown'} • {need.organizations?.display_name} • {need.groups?.name || 'No group'}
+                        Requested by {need.users?.full_name || 'Unknown'} • {need.organizations?.display_name} •{' '}
+                        {need.groups?.name || 'No group'}
                       </p>
                       <p className="text-gray-600 line-clamp-2">{need.description}</p>
-                      <p className="text-xs text-gray-400 mt-2">
-                        Submitted: {new Date(need.submitted_at).toLocaleString()}
-                      </p>
+                      <p className="text-xs text-gray-400 mt-2">Submitted: {new Date(need.submitted_at).toLocaleString()}</p>
                     </div>
+
                     <div className="flex gap-2 ml-4">
                       <Button
                         size="sm"
@@ -445,6 +454,7 @@ export default function AdminPage() {
                         <CheckCircleIcon className="h-4 w-4 mr-1" />
                         Approve
                       </Button>
+
                       <Button
                         size="sm"
                         variant="danger"
@@ -465,14 +475,11 @@ export default function AdminPage() {
 
         <div className="bg-white rounded-lg shadow">
           <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Pending User Approvals ({pendingUsers.length})
-            </h2>
+            <h2 className="text-lg font-semibold text-gray-900">Pending User Approvals ({pendingUsers.length})</h2>
           </div>
+
           {pendingUsers.length === 0 ? (
-            <div className="p-6 text-center text-gray-500">
-              No users pending approval
-            </div>
+            <div className="p-6 text-center text-gray-500">No users pending approval</div>
           ) : (
             <div className="divide-y divide-gray-200">
               {pendingUsers.map((pendingUser) => (
@@ -481,9 +488,11 @@ export default function AdminPage() {
                     <h3 className="font-semibold text-gray-900">{pendingUser.full_name || 'No name'}</h3>
                     <p className="text-sm text-gray-500">{pendingUser.email}</p>
                     <p className="text-xs text-gray-400">
-                      {pendingUser.organizations?.display_name || 'No organization'} • Registered: {new Date(pendingUser.created_at).toLocaleDateString()}
+                      {pendingUser.organizations?.display_name || 'No organization'} • Registered:{' '}
+                      {new Date(pendingUser.created_at).toLocaleDateString()}
                     </p>
                   </div>
+
                   <Button
                     size="sm"
                     onClick={() => handleApproveUser(pendingUser.id)}
