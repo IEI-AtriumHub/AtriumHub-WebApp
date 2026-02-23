@@ -35,3 +35,4 @@ next-env.d.ts
 
 # ignore editor backups
 *.bak
+AtriumHub.code-workspace
