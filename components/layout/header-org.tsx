@@ -18,7 +18,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { useAuth } from '@/context/AuthContext';
 
-type HeaderProps = { onMenuClick?: () => void; };
+type HeaderProps = { onMenuClick?: () => void };
 
 type NavItem = {
   name: string;
@@ -40,10 +40,7 @@ export default function HeaderOrg({ onMenuClick }: HeaderProps) {
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  // Branding from org (safe fallbacks)
-  const brandName =
-  (organization?.display_name || '').trim() || 'AtriumHub';
-
+  const brandName = (organization?.display_name || '').trim() || 'AtriumHub';
   const logoUrl = (organization?.logo_url || '').trim() || null;
 
   const primary =
@@ -94,6 +91,8 @@ export default function HeaderOrg({ onMenuClick }: HeaderProps) {
       <header className="bg-white border-b">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-14 items-center justify-between">
+
+            {/* LEFT */}
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -102,119 +101,56 @@ export default function HeaderOrg({ onMenuClick }: HeaderProps) {
                 aria-label="Open menu"
               >
                 <Bars3Icon className="h-6 w-6" aria-hidden="true" />
-                <span className="sr-only">Open menu</span>
               </button>
 
               <Link href="/" className="flex items-center gap-2 min-w-0">
                 {logoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={logoUrl}
-                    alt={`${brandName} logo`}
-                    className="h-9 w-9 rounded-lg object-cover border"
-                  />
+                  <img src={logoUrl} alt={`${brandName} logo`} className="h-9 w-9 rounded-lg object-cover border" />
                 ) : (
-                  <div
-                    className="h-9 w-9 rounded-lg text-white flex items-center justify-center font-semibold"
-                    style={{ backgroundColor: primary }}
-                  >
+                  <div className="h-9 w-9 rounded-lg text-white flex items-center justify-center font-semibold" style={{ backgroundColor: primary }}>
                     {initials}
                   </div>
                 )}
-
-                <span className="text-lg font-bold text-gray-900 truncate">
-                  {brandName}
-                </span>
+                <span className="text-lg font-bold text-gray-900 truncate">{brandName}</span>
               </Link>
             </div>
 
+            {/* DESKTOP NAV */}
             <nav className="hidden sm:flex items-center gap-2">
-              <Link
-                href="/needs"
-                className={classNames(
-                  isActive('/needs') && !isActive('/needs/new') ? 'bg-gray-100 text-gray-900' : 'text-gray-700',
-                  'px-3 py-1.5 rounded-md text-sm hover:bg-gray-100'
-                )}
-              >
+              <Link href="/needs" className={classNames(isActive('/needs') ? 'bg-gray-100 text-gray-900' : 'text-gray-700','px-3 py-1.5 rounded-md text-sm hover:bg-gray-100')}>
                 Browse
               </Link>
-              <Link
-                href="/my-needs"
-                className={classNames(
-                  isActive('/my-needs') ? 'bg-gray-100 text-gray-900' : 'text-gray-700',
-                  'px-3 py-1.5 rounded-md text-sm hover:bg-gray-100'
-                )}
-              >
+              <Link href="/my-needs" className={classNames(isActive('/my-needs') ? 'bg-gray-100 text-gray-900' : 'text-gray-700','px-3 py-1.5 rounded-md text-sm hover:bg-gray-100')}>
                 My Needs
               </Link>
-              <Link
-                href="/needs/new"
-                className="px-3 py-1.5 rounded-md text-sm text-white"
-                style={{ backgroundColor: secondary }}
-              >
+              <Link href="/needs/new" className="px-3 py-1.5 rounded-md text-sm text-white" style={{ backgroundColor: secondary }}>
                 + Create
               </Link>
               {displayIsAdmin && (
-                <Link
-                  href="/admin"
-                  className={classNames(
-                    isActive('/admin') ? 'bg-gray-100 text-gray-900' : 'text-gray-700',
-                    'px-3 py-1.5 rounded-md text-sm hover:bg-gray-100'
-                  )}
-                >
+                <Link href="/admin" className={classNames(isActive('/admin') ? 'bg-gray-100 text-gray-900' : 'text-gray-700','px-3 py-1.5 rounded-md text-sm hover:bg-gray-100')}>
                   Admin
                 </Link>
               )}
             </nav>
 
+            {/* USER MENU */}
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="hidden sm:inline-flex items-center justify-center rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-                aria-label="Notifications"
-              >
-                <BellIcon className="h-6 w-6" aria-hidden="true" />
+              <button className="hidden sm:inline-flex p-2 text-gray-500 hover:bg-gray-100 rounded-md">
+                <BellIcon className="h-6 w-6" />
               </button>
 
               <Menu as="div" className="relative">
-                <Menu.Button className="flex items-center gap-2 rounded-full p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-600">
-                  <UserCircleIcon className="h-7 w-7" aria-hidden="true" />
-                  <span className="hidden sm:inline text-sm font-medium text-gray-700">
-                    {user?.full_name || 'Account'}
-                  </span>
-                  <span className="sr-only">Open user menu</span>
+                <Menu.Button className="flex items-center gap-2 rounded-full p-1.5 hover:bg-gray-100">
+                  <UserCircleIcon className="h-7 w-7 text-gray-500" />
+                  <span className="hidden sm:inline text-sm">{user?.full_name || 'Account'}</span>
                 </Menu.Button>
 
-                <Transition
-                  as={Fragment}
-                  enter="transition ease-out duration-100"
-                  enterFrom="transform opacity-0 scale-95"
-                  enterTo="transform opacity-100 scale-100"
-                  leave="transition ease-in duration-75"
-                  leaveFrom="transform opacity-100 scale-100"
-                  leaveTo="transform opacity-0 scale-95"
-                >
-                  <Menu.Items className="absolute right-0 mt-2 w-56 origin-top-right rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
-                    <div className="px-4 py-2">
-                      <p className="text-xs text-gray-500">Signed in as</p>
-                      <p className="text-sm font-medium text-gray-900 truncate">
-                        {user?.email || user?.full_name || 'User'}
-                      </p>
-                    </div>
-
-                    <div className="border-t my-1" />
-
+                <Transition as={Fragment}>
+                  <Menu.Items className="absolute right-0 mt-2 w-56 rounded-md bg-white shadow-lg ring-1 ring-black/5">
                     <Menu.Item>
                       {({ active }) => (
-                        <Link
-                          href="/profile"
-                          className={classNames(
-                            active ? 'bg-gray-100' : '',
-                            'flex items-center gap-2 px-4 py-2 text-sm text-gray-700'
-                          )}
-                        >
-                          <Cog6ToothIcon className="h-5 w-5" />
-                          Profile / Settings
+                        <Link href="/profile" className={classNames(active && 'bg-gray-100','flex gap-2 px-4 py-2 text-sm')}>
+                          <Cog6ToothIcon className="h-5 w-5" /> Profile
                         </Link>
                       )}
                     </Menu.Item>
@@ -222,34 +158,17 @@ export default function HeaderOrg({ onMenuClick }: HeaderProps) {
                     {displayIsAdmin && (
                       <Menu.Item>
                         {({ active }) => (
-                          <Link
-                            href="/admin"
-                            className={classNames(
-                              active ? 'bg-gray-100' : '',
-                              'flex items-center gap-2 px-4 py-2 text-sm text-gray-700'
-                            )}
-                          >
-                            <UserGroupIcon className="h-5 w-5" />
-                            Admin
+                          <Link href="/admin" className={classNames(active && 'bg-gray-100','flex gap-2 px-4 py-2 text-sm')}>
+                            <UserGroupIcon className="h-5 w-5" /> Admin
                           </Link>
                         )}
                       </Menu.Item>
                     )}
 
-                    <div className="border-t my-1" />
-
                     <Menu.Item>
                       {({ active }) => (
-                        <button
-                          type="button"
-                          onClick={signOut}
-                          className={classNames(
-                            active ? 'bg-gray-100' : '',
-                            'w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-gray-700'
-                          )}
-                        >
-                          <ArrowRightOnRectangleIcon className="h-5 w-5" />
-                          Sign out
+                        <button onClick={signOut} className={classNames(active && 'bg-gray-100','w-full text-left flex gap-2 px-4 py-2 text-sm')}>
+                          <ArrowRightOnRectangleIcon className="h-5 w-5" /> Sign out
                         </button>
                       )}
                     </Menu.Item>
@@ -257,12 +176,40 @@ export default function HeaderOrg({ onMenuClick }: HeaderProps) {
                 </Transition>
               </Menu>
             </div>
+
           </div>
         </div>
       </header>
 
-      {/* Mobile drawer can stay exactly as your existing file; keep this step focused */}
-      {/* If you want, we’ll copy your existing mobile drawer block in Step 2. */}
+      {/* MOBILE DRAWER */}
+      <Transition.Root show={mobileOpen} as={Fragment}>
+        <Dialog as="div" className="relative z-50 sm:hidden" onClose={setMobileOpen}>
+          <div className="fixed inset-0 bg-black/30" />
+          <div className="fixed inset-0 flex">
+            <Dialog.Panel className="relative w-[85%] max-w-sm bg-white shadow-xl">
+              <div className="flex items-center justify-between px-4 py-4 border-b">
+                <div className="font-semibold">{brandName}</div>
+                <button onClick={closeMobile}><XMarkIcon className="h-6 w-6"/></button>
+              </div>
+
+              <div className="px-2 py-3 space-y-1">
+                {visibleNav.map((item) => (
+                  <button key={item.href} onClick={() => go(item.href)} className="w-full text-left px-3 py-2 rounded-md hover:bg-gray-100">
+                    {item.name}
+                  </button>
+                ))}
+
+                <div className="border-t my-3" />
+
+                <button onClick={handleSignOut} className="w-full text-left px-3 py-2 hover:bg-gray-100">
+                  Sign out
+                </button>
+              </div>
+            </Dialog.Panel>
+            <div className="flex-1"/>
+          </div>
+        </Dialog>
+      </Transition.Root>
     </>
   );
 }
