@@ -77,9 +77,19 @@ export default function HeaderOrg({ onMenuClick }: HeaderProps) {
     if (onMenuClick) onMenuClick();
     else setMobileOpen(true);
   };
+
   const closeMobile = () => setMobileOpen(false);
-  const go = (href: string) => { closeMobile(); router.push(href); };
-  const handleSignOut = async () => { closeMobile(); await signOut(); };
+
+  const go = (href: string) => {
+    closeMobile();
+    router.push(href);
+  };
+
+  const handleSignOut = async () => {
+    // Close any overlays first, then sign out.
+    closeMobile();
+    await signOut();
+  };
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
@@ -91,7 +101,6 @@ export default function HeaderOrg({ onMenuClick }: HeaderProps) {
       <header className="bg-white border-b">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-14 items-center justify-between">
-
             {/* LEFT */}
             <div className="flex items-center gap-3">
               <button
@@ -105,9 +114,17 @@ export default function HeaderOrg({ onMenuClick }: HeaderProps) {
 
               <Link href="/" className="flex items-center gap-2 min-w-0">
                 {logoUrl ? (
-                  <img src={logoUrl} alt={`${brandName} logo`} className="h-9 w-9 rounded-lg object-cover border" />
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={logoUrl}
+                    alt={`${brandName} logo`}
+                    className="h-9 w-9 rounded-lg object-cover border"
+                  />
                 ) : (
-                  <div className="h-9 w-9 rounded-lg text-white flex items-center justify-center font-semibold" style={{ backgroundColor: primary }}>
+                  <div
+                    className="h-9 w-9 rounded-lg text-white flex items-center justify-center font-semibold"
+                    style={{ backgroundColor: primary }}
+                  >
                     {initials}
                   </div>
                 )}
@@ -117,17 +134,39 @@ export default function HeaderOrg({ onMenuClick }: HeaderProps) {
 
             {/* DESKTOP NAV */}
             <nav className="hidden sm:flex items-center gap-2">
-              <Link href="/needs" className={classNames(isActive('/needs') ? 'bg-gray-100 text-gray-900' : 'text-gray-700','px-3 py-1.5 rounded-md text-sm hover:bg-gray-100')}>
+              <Link
+                href="/needs"
+                className={classNames(
+                  isActive('/needs') ? 'bg-gray-100 text-gray-900' : 'text-gray-700',
+                  'px-3 py-1.5 rounded-md text-sm hover:bg-gray-100'
+                )}
+              >
                 Browse
               </Link>
-              <Link href="/my-needs" className={classNames(isActive('/my-needs') ? 'bg-gray-100 text-gray-900' : 'text-gray-700','px-3 py-1.5 rounded-md text-sm hover:bg-gray-100')}>
+              <Link
+                href="/my-needs"
+                className={classNames(
+                  isActive('/my-needs') ? 'bg-gray-100 text-gray-900' : 'text-gray-700',
+                  'px-3 py-1.5 rounded-md text-sm hover:bg-gray-100'
+                )}
+              >
                 My Needs
               </Link>
-              <Link href="/needs/new" className="px-3 py-1.5 rounded-md text-sm text-white" style={{ backgroundColor: secondary }}>
+              <Link
+                href="/needs/new"
+                className="px-3 py-1.5 rounded-md text-sm text-white"
+                style={{ backgroundColor: secondary }}
+              >
                 + Create
               </Link>
               {displayIsAdmin && (
-                <Link href="/admin" className={classNames(isActive('/admin') ? 'bg-gray-100 text-gray-900' : 'text-gray-700','px-3 py-1.5 rounded-md text-sm hover:bg-gray-100')}>
+                <Link
+                  href="/admin"
+                  className={classNames(
+                    isActive('/admin') ? 'bg-gray-100 text-gray-900' : 'text-gray-700',
+                    'px-3 py-1.5 rounded-md text-sm hover:bg-gray-100'
+                  )}
+                >
                   Admin
                 </Link>
               )}
@@ -149,7 +188,10 @@ export default function HeaderOrg({ onMenuClick }: HeaderProps) {
                   <Menu.Items className="absolute right-0 mt-2 w-56 rounded-md bg-white shadow-lg ring-1 ring-black/5">
                     <Menu.Item>
                       {({ active }) => (
-                        <Link href="/profile" className={classNames(active && 'bg-gray-100','flex gap-2 px-4 py-2 text-sm')}>
+                        <Link
+                          href="/profile"
+                          className={classNames(active && 'bg-gray-100', 'flex gap-2 px-4 py-2 text-sm')}
+                        >
                           <Cog6ToothIcon className="h-5 w-5" /> Profile
                         </Link>
                       )}
@@ -158,7 +200,10 @@ export default function HeaderOrg({ onMenuClick }: HeaderProps) {
                     {displayIsAdmin && (
                       <Menu.Item>
                         {({ active }) => (
-                          <Link href="/admin" className={classNames(active && 'bg-gray-100','flex gap-2 px-4 py-2 text-sm')}>
+                          <Link
+                            href="/admin"
+                            className={classNames(active && 'bg-gray-100', 'flex gap-2 px-4 py-2 text-sm')}
+                          >
                             <UserGroupIcon className="h-5 w-5" /> Admin
                           </Link>
                         )}
@@ -167,7 +212,19 @@ export default function HeaderOrg({ onMenuClick }: HeaderProps) {
 
                     <Menu.Item>
                       {({ active }) => (
-                        <button onClick={signOut} className={classNames(active && 'bg-gray-100','w-full text-left flex gap-2 px-4 py-2 text-sm')}>
+                        <button
+                          type="button"
+                          // IMPORTANT: use mousedown so the action happens before the menu unmounts.
+                          onMouseDown={async (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            await handleSignOut();
+                          }}
+                          className={classNames(
+                            active && 'bg-gray-100',
+                            'w-full text-left flex gap-2 px-4 py-2 text-sm'
+                          )}
+                        >
                           <ArrowRightOnRectangleIcon className="h-5 w-5" /> Sign out
                         </button>
                       )}
@@ -176,7 +233,6 @@ export default function HeaderOrg({ onMenuClick }: HeaderProps) {
                 </Transition>
               </Menu>
             </div>
-
           </div>
         </div>
       </header>
@@ -189,12 +245,18 @@ export default function HeaderOrg({ onMenuClick }: HeaderProps) {
             <Dialog.Panel className="relative w-[85%] max-w-sm bg-white shadow-xl">
               <div className="flex items-center justify-between px-4 py-4 border-b">
                 <div className="font-semibold">{brandName}</div>
-                <button onClick={closeMobile}><XMarkIcon className="h-6 w-6"/></button>
+                <button onClick={closeMobile}>
+                  <XMarkIcon className="h-6 w-6" />
+                </button>
               </div>
 
               <div className="px-2 py-3 space-y-1">
                 {visibleNav.map((item) => (
-                  <button key={item.href} onClick={() => go(item.href)} className="w-full text-left px-3 py-2 rounded-md hover:bg-gray-100">
+                  <button
+                    key={item.href}
+                    onClick={() => go(item.href)}
+                    className="w-full text-left px-3 py-2 rounded-md hover:bg-gray-100"
+                  >
                     {item.name}
                   </button>
                 ))}
@@ -206,7 +268,7 @@ export default function HeaderOrg({ onMenuClick }: HeaderProps) {
                 </button>
               </div>
             </Dialog.Panel>
-            <div className="flex-1"/>
+            <div className="flex-1" />
           </div>
         </Dialog>
       </Transition.Root>
