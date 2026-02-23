@@ -16,6 +16,7 @@ import {
   ChartBarIcon,
   UsersIcon,
   TagIcon,
+  Cog6ToothIcon,
 } from '@heroicons/react/24/outline';
 
 interface PendingNeed {
@@ -191,7 +192,6 @@ export default function AdminPage() {
     }
   }, [authLoading, user, isAdmin, isSuperAdmin, supabase]);
 
-
   const handleApproveNeed = async (needId: string) => {
     setProcessingId(needId);
     try {
@@ -359,6 +359,15 @@ export default function AdminPage() {
               <p className="text-sm text-gray-500">Create and edit organizations</p>
             </Link>
           )}
+
+          {isSuperAdmin && (
+            <Link href="/admin/org-branding" className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
+              <Cog6ToothIcon className="h-8 w-8 text-fuchsia-600 mb-2" />
+              <h3 className="font-semibold text-gray-900">Org Branding</h3>
+              <p className="text-sm text-gray-500">Name, logo, colors, PWA look</p>
+            </Link>
+          )}
+
           {isSuperAdmin && (
             <Link href="/admin/organization-categories" className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
               <TagIcon className="h-8 w-8 text-amber-600 mb-2" />
@@ -366,6 +375,7 @@ export default function AdminPage() {
               <p className="text-sm text-gray-500">Enable/disable categories per org</p>
             </Link>
           )}
+
           <Link href="/admin/users" className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
             <UsersIcon className="h-8 w-8 text-indigo-600 mb-2" />
             <h3 className="font-semibold text-gray-900">Manage Users</h3>
@@ -373,11 +383,13 @@ export default function AdminPage() {
               {isSuperAdmin ? 'Edit roles & impersonate users' : 'Edit user roles and status'}
             </p>
           </Link>
+
           <Link href="/admin/groups" className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
             <UserGroupIcon className="h-8 w-8 text-green-600 mb-2" />
             <h3 className="font-semibold text-gray-900">Manage Groups</h3>
             <p className="text-sm text-gray-500">Create and edit groups</p>
           </Link>
+
           <Link href="/admin/reports" className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
             <ChartBarIcon className="h-8 w-8 text-purple-600 mb-2" />
             <h3 className="font-semibold text-gray-900">Reports</h3>
