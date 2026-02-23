@@ -6,7 +6,7 @@
 
 import { ReactNode } from 'react';
 import { useRequireApproval } from '@/context/AuthContext';
-import Header from './Header';
+import Header from './header-org';
 import { LoadingOverlay } from '../ui/Spinner';
 
 interface PageContainerProps {

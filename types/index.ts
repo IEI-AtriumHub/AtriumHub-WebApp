@@ -30,6 +30,7 @@ export interface Organization {
   logo_url: string | null;
   created_at: string;
   updated_at: string;
+  secondary_color: string | null;
 }
 
 export interface User {
