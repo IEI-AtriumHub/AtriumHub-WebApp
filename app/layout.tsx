@@ -8,6 +8,8 @@ import { Toaster } from 'react-hot-toast';
 import ImpersonationBanner from '@/components/ImpersonationBanner';
 import OrgBrandFooter from '@/components/branding/OrgBrandFooter';
 import './globals.css';
+import RegisterSW from '@/components/pwa/RegisterSW';
+
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
@@ -21,6 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className={inter.variable}>
         <AuthProvider>
+          <RegisterSW />
           <div className="min-h-screen flex flex-col">
             <ImpersonationBanner />
             <main className="flex-1">{children}</main>
