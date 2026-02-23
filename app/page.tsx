@@ -106,19 +106,26 @@ export default function HomePage() {
       requireAuth
       title="Happening Now"
       actions={
-        <div className="flex gap-2">
-          <Link href="/needs">
-            <Button variant="outline" size="sm">
-              Browse
-            </Button>
-          </Link>
-          <Link href="/needs/new">
-            <Button size="sm">
-              <PlusIcon className="h-4 w-4 mr-2" />
-              Create
-            </Button>
-          </Link>
-        </div>
+        <div className="flex gap-2 flex-wrap">
+  <Link href="/needs">
+    <Button variant="outline" size="sm">Browse</Button>
+  </Link>
+
+  <Link href="/needs/in-progress">
+    <Button variant="outline" size="sm">In Progress</Button>
+  </Link>
+
+  <Link href="/my-needs">
+    <Button variant="outline" size="sm">My Needs</Button>
+  </Link>
+
+  <Link href="/needs/new">
+    <Button size="sm">
+      <PlusIcon className="h-4 w-4 mr-2" />
+      Create Need
+    </Button>
+  </Link>
+</div>
       }
     >
       {loadingNeeds ? (
