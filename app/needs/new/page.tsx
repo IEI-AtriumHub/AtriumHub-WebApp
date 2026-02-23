@@ -17,11 +17,6 @@ interface Organization {
   primary_color: string;
 }
 
-interface Category {
-  id: string;
-  name: string;
-}
-
 interface Group {
   id: string;
   name: string;
@@ -32,16 +27,15 @@ export default function CreateNeedPage() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [selectedOrgId, setSelectedOrgId] = useState<string>('');
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     need_type: 'WORK',
     urgency: 'MEDIUM',
-    category_id: '',
     group_id: '',
     // Work-specific fields
     work_location: '',
@@ -84,7 +78,7 @@ export default function CreateNeedPage() {
           .order('display_name');
 
         if (error) throw error;
-        setOrganizations(data || []);
+        setOrganizations((data || []) as Organization[]);
 
         // Default to user's organization if they have one
         if (userOrganization) {
@@ -92,7 +86,7 @@ export default function CreateNeedPage() {
           setSelectedOrg(userOrganization as Organization);
         } else if (data && data.length > 0) {
           setSelectedOrgId(data[0].id);
-          setSelectedOrg(data[0]);
+          setSelectedOrg(data[0] as Organization);
         }
       } catch (error) {
         console.error('Error fetching organizations:', error);
@@ -107,12 +101,11 @@ export default function CreateNeedPage() {
     }
   }, [authLoading, user, userOrganization, isSuperAdmin, supabase]);
 
-  // Fetch groups and categories when selected organization changes (or for normal users, when org is known)
+  // Fetch groups when selected organization changes (or for normal users, when org is known)
   useEffect(() => {
     const fetchOrgData = async () => {
       if (!effectiveOrgId) {
         setGroups([]);
-        setCategories([]);
         return;
       }
 
@@ -126,26 +119,13 @@ export default function CreateNeedPage() {
           .order('name');
 
         if (groupsError) throw groupsError;
-        setGroups(groupsData || []);
+        setGroups((groupsData || []) as Group[]);
 
-        // Fetch categories (global + org-specific), active + not hidden
-        const { data: categoriesData, error: categoriesError } = await supabase
-          .from('need_categories')
-          .select('id, name')
-          .eq('is_active', true)
-          .or(`organization_id.is.null,organization_id.eq.${effectiveOrgId}`)
-          .or('is_hidden.is.null,is_hidden.eq.false')
-          .order('display_order', { ascending: true })
-          .order('name', { ascending: true });
-
-        if (categoriesError) throw categoriesError;
-        setCategories(categoriesData || []);
-
-        // Reset selections when org changes
-        setFormData((prev) => ({ ...prev, group_id: '', category_id: '' }));
+        // Reset group selection when org changes
+        setFormData((prev) => ({ ...prev, group_id: '' }));
       } catch (error: any) {
         console.error('Error fetching org data:', error);
-        toast.error(error?.message || 'Failed to load groups/categories');
+        toast.error(error?.message || 'Failed to load groups');
       }
     };
 
@@ -193,19 +173,26 @@ export default function CreateNeedPage() {
         submitted_at: new Date().toISOString(),
       };
 
-      if (formData.category_id) {
-        needData.category_id = formData.category_id;
-      }
+      // NOTE: Category intentionally removed for now to avoid duplicating "Type of Need"
+      // and to keep demo flow clean + reporting consistent.
 
       if (formData.need_type === 'WORK') {
         if (formData.work_location) needData.work_location = formData.work_location;
         if (formData.work_start_date) needData.work_start_date = formData.work_start_date;
         if (formData.work_end_date) needData.work_end_date = formData.work_end_date;
         if (formData.work_estimated_hours) needData.work_estimated_hours = parseFloat(formData.work_estimated_hours);
-        if (formData.work_skills_required)
-          needData.work_skills_required = formData.work_skills_required.split(',').map((s) => s.trim());
-        if (formData.work_tools_needed)
-          needData.work_tools_needed = formData.work_tools_needed.split(',').map((s) => s.trim());
+        if (formData.work_skills_required) {
+          needData.work_skills_required = formData.work_skills_required
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean);
+        }
+        if (formData.work_tools_needed) {
+          needData.work_tools_needed = formData.work_tools_needed
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean);
+        }
       } else if (formData.need_type === 'FINANCIAL') {
         if (formData.financial_amount) needData.financial_amount = parseFloat(formData.financial_amount);
         if (formData.financial_currency) needData.financial_currency = formData.financial_currency;
@@ -373,61 +360,36 @@ export default function CreateNeedPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Group *</label>
-                  <select
-                    value={formData.group_id}
-                    onChange={(e) => setFormData({ ...formData, group_id: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    required
-                    disabled={!effectiveOrgId}
-                  >
-                    <option value="">
-                      {!effectiveOrgId
-                        ? 'Select an organization first'
-                        : groups.length === 0
-                        ? 'No groups available - create one first'
-                        : 'Select a group'}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Group *</label>
+                <select
+                  value={formData.group_id}
+                  onChange={(e) => setFormData({ ...formData, group_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  required
+                  disabled={!effectiveOrgId}
+                >
+                  <option value="">
+                    {!effectiveOrgId
+                      ? 'Select an organization first'
+                      : groups.length === 0
+                      ? 'No groups available - create one first'
+                      : 'Select a group'}
+                  </option>
+                  {groups.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
                     </option>
-                    {groups.map((group) => (
-                      <option key={group.id} value={group.id}>
-                        {group.name}
-                      </option>
-                    ))}
-                  </select>
-                  {effectiveOrgId && groups.length === 0 && (
-                    <p className="mt-1 text-sm text-amber-600">
-                      <Link href="/admin/groups" className="underline hover:text-amber-700">
-                        Create a group
-                      </Link>{' '}
-                      for this organization first.
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                  <select
-                    value={formData.category_id}
-                    onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    disabled={!effectiveOrgId}
-                  >
-                    <option value="">
-                      {!effectiveOrgId
-                        ? 'Select an organization first'
-                        : categories.length === 0
-                        ? 'No categories available (optional)'
-                        : 'Select a category (optional)'}
-                    </option>
-                    {categories.map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                  ))}
+                </select>
+                {effectiveOrgId && groups.length === 0 && (
+                  <p className="mt-1 text-sm text-amber-600">
+                    <Link href="/admin/groups" className="underline hover:text-amber-700">
+                      Create a group
+                    </Link>{' '}
+                    for this organization first.
+                  </p>
+                )}
               </div>
             </div>
           </div>
