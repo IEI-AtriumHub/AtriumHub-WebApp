@@ -6,6 +6,7 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import Link from 'next/link';
 import Button from '@/components/ui/Button';
 import PageContainer from '@/components/layout/PageContainer';
+import { URGENCY_STYLES } from '@/lib/urgencyStyles';
 
 interface PersonLite {
   full_name: string;
@@ -30,20 +31,6 @@ interface Need {
   organizations: { display_name: string } | null;
   groups: { name: string } | null; // needs.group_id -> groups.name
 }
-
-const urgencyChipColors: Record<string, string> = {
-  LOW: 'bg-gray-100 text-gray-600',
-  MEDIUM: 'bg-blue-100 text-blue-700',
-  HIGH: 'bg-purple-100 text-purple-800',
-  CRITICAL: 'bg-red-100 text-red-700',
-};
-
-const urgencyBarColors: Record<string, string> = {
-  LOW: 'bg-gray-300',
-  MEDIUM: 'bg-blue-500',
-  HIGH: 'bg-purple-500',
-  CRITICAL: 'bg-red-500',
-};
 
 function getNeedTypeLabel(needType: string) {
   switch (needType) {
@@ -205,7 +192,13 @@ export default function NeedsInProgressPage() {
             const requesterName = need.requester?.full_name?.trim() || 'Unknown';
             const helperName = need.helper?.full_name?.trim() || 'Unassigned';
 
-            const bar = urgencyBarColors[need.urgency] || 'bg-gray-300';
+            const urgencyKey = String(need.urgency || '').toUpperCase() as keyof typeof URGENCY_STYLES;
+
+            // Left bar uses bg-* style
+            const bar = URGENCY_STYLES[urgencyKey]?.dot ?? URGENCY_STYLES.LOW.dot;
+
+            // Chip uses pill style
+            const chip = URGENCY_STYLES[urgencyKey]?.pill ?? URGENCY_STYLES.LOW.pill;
 
             return (
               <Link key={need.id} href={`/needs/${need.id}`} className="block">
@@ -221,9 +214,7 @@ export default function NeedsInProgressPage() {
                       {/* Chips — ALWAYS below title (mobile + desktop) */}
                       <div className="mt-2 flex flex-wrap gap-2">
                         <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            urgencyChipColors[need.urgency] || 'bg-gray-100 text-gray-600'
-                          }`}
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${chip}`}
                         >
                           {need.urgency}
                         </span>
