@@ -24,10 +24,12 @@ interface NeedCardProps {
 }
 
 export function NeedCard({ need, showGroup = true, onClick }: NeedCardProps) {
+  // Priority / urgency color system:
+  // Low: gray, Medium: blue, High: amber (replaces orange for better separation), Critical: red
   const urgencyColors: Record<string, string> = {
     LOW: 'border-l-gray-400',
     MEDIUM: 'border-l-blue-400',
-    HIGH: 'border-l-orange-400',
+    HIGH: 'border-l-amber-500',
     CRITICAL: 'border-l-red-400',
   };
 
