@@ -7,6 +7,7 @@ import Link from 'next/link';
 import Button from '@/components/ui/Button';
 import PageContainer from '@/components/layout/PageContainer';
 import { PlusIcon, HandRaisedIcon } from '@heroicons/react/24/outline';
+import { URGENCY_STYLES } from '@/lib/urgencyStyles';
 
 interface Need {
   id: string;
@@ -28,21 +29,6 @@ interface Need {
   groups: { name: string } | null;
   need_categories: { name: string } | null;
 }
-
-const urgencyColors: Record<string, string> = {
-  LOW: 'bg-gray-100 text-gray-600',
-  MEDIUM: 'bg-blue-100 text-blue-700',
-  HIGH: 'bg-purple-100 text-purple-800',
-  CRITICAL: 'bg-red-100 text-red-700',
-};
-
-// Left color bar (stronger contrast than the badge)
-const urgencyBarColors: Record<string, string> = {
-  LOW: 'bg-gray-300',
-  MEDIUM: 'bg-blue-500',
-  HIGH: 'bg-purple-500',
-  CRITICAL: 'bg-red-500',
-};
 
 function getNeedTypeLabel(needType: string) {
   switch (needType) {
@@ -198,8 +184,13 @@ export default function NeedsPage() {
                   ? `Hidden (RLS) • ${shortId(need.requester_user_id)}`
                   : 'Missing requester';
 
-            const barColor =
-              urgencyBarColors[String(need.urgency || '').toUpperCase()] || 'bg-gray-300';
+            const urgencyKey = String(need.urgency || '').toUpperCase() as keyof typeof URGENCY_STYLES;
+
+            // Left color bar (use "dot" style since it is bg-*)
+            const barColor = URGENCY_STYLES[urgencyKey]?.dot ?? URGENCY_STYLES.LOW.dot;
+
+            // Badge (pill) classes
+            const badgeClass = URGENCY_STYLES[urgencyKey]?.pill ?? URGENCY_STYLES.LOW.pill;
 
             return (
               <div
@@ -217,9 +208,7 @@ export default function NeedsPage() {
                         <h3 className="text-lg font-semibold text-gray-900">{need.title}</h3>
 
                         <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            urgencyColors[need.urgency] || 'bg-gray-100 text-gray-600'
-                          }`}
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${badgeClass}`}
                         >
                           {need.urgency}
                         </span>
