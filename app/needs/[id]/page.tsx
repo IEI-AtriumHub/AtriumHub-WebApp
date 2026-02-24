@@ -8,6 +8,7 @@ import Link from 'next/link';
 import Button from '@/components/ui/Button';
 import PageContainer from '@/components/layout/PageContainer';
 import toast from 'react-hot-toast';
+import { URGENCY_STYLES } from '@/lib/urgencyStyles';
 import {
   CalendarIcon,
   MapPinIcon,
@@ -88,13 +89,6 @@ const statusConfig: Record<string, { color: string; bg: string; label: string }>
   REJECTED: { color: 'text-red-700', bg: 'bg-red-100', label: 'Rejected' },
 };
 
-const urgencyConfig: Record<string, { color: string; bg: string }> = {
-  LOW: { color: 'text-gray-600', bg: 'bg-gray-100' },
-  MEDIUM: { color: 'text-blue-700', bg: 'bg-blue-100' },
-  HIGH: { color: 'text-purple-800', bg: 'bg-purple-100' },
-  CRITICAL: { color: 'text-red-700', bg: 'bg-red-100' },
-};
-
 function getNeedTypeLabel(needType: string) {
   switch (needType) {
     case 'WORK':
@@ -173,17 +167,22 @@ export default function NeedDetailsPage() {
         }
 
         // UI-only impersonation guard
-        if (isImpersonating && organization?.id && data?.organization_id && data.organization_id !== organization.id) {
+        if (
+          isImpersonating &&
+          organization?.id &&
+          (data as any)?.organization_id &&
+          (data as any).organization_id !== organization.id
+        ) {
           setNeed(null);
           return;
         }
 
         const normalized: Need = {
           ...(data as any),
-          users: normalizeJoin<Need['users']>(data.users),
-          organizations: normalizeJoin<Need['organizations']>(data.organizations),
-          groups: normalizeJoin<Need['groups']>(data.groups),
-          need_categories: normalizeJoin<Need['need_categories']>(data.need_categories),
+          users: normalizeJoin<Need['users']>((data as any).users),
+          organizations: normalizeJoin<Need['organizations']>((data as any).organizations),
+          groups: normalizeJoin<Need['groups']>((data as any).groups),
+          need_categories: normalizeJoin<Need['need_categories']>((data as any).need_categories),
           approved_by_user: normalizeJoin<Need['approved_by_user']>((data as any).approved_by_user),
           rejected_by_user: normalizeJoin<Need['rejected_by_user']>((data as any).rejected_by_user),
           claimed_by_user: normalizeJoin<Need['claimed_by_user']>((data as any).claimed_by_user),
@@ -434,7 +433,10 @@ export default function NeedDetailsPage() {
   }
 
   const status = statusConfig[need.status] || statusConfig.DRAFT;
-  const urgency = urgencyConfig[need.urgency] || urgencyConfig.MEDIUM;
+
+  const urgencyKey = String(need.urgency || '').toUpperCase() as keyof typeof URGENCY_STYLES;
+  const urgency = URGENCY_STYLES[urgencyKey] ?? URGENCY_STYLES.MEDIUM;
+
   const isOwner = user?.id === need.requester_user_id;
   const isClaimedByMe = need.claimed_by === user?.id;
   const canClaim = need.status === 'APPROVED_OPEN' && !isOwner;
@@ -502,15 +504,20 @@ export default function NeedDetailsPage() {
               <h1 className="text-2xl font-bold text-gray-900 mb-3">{need.title}</h1>
 
               <div className="flex items-center gap-2 flex-wrap mb-3">
-                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${status.bg} ${status.color}`}>
+                <span
+                  className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${status.bg} ${status.color}`}
+                >
                   {status.label}
                 </span>
-                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${urgency.bg} ${urgency.color}`}>
+
+                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${urgency.pill}`}>
                   {need.urgency} Urgency
                 </span>
+
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-700">
                   {getNeedTypeLabel(need.need_type)}
                 </span>
+
                 {need.need_categories?.name && (
                   <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-700">
                     {need.need_categories.name}
