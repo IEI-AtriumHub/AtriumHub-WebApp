@@ -91,7 +91,7 @@ const statusConfig: Record<string, { color: string; bg: string; label: string }>
 const urgencyConfig: Record<string, { color: string; bg: string }> = {
   LOW: { color: 'text-gray-600', bg: 'bg-gray-100' },
   MEDIUM: { color: 'text-blue-700', bg: 'bg-blue-100' },
-  HIGH: { color: 'text-orange-700', bg: 'bg-orange-100' },
+  HIGH: { color: 'text-amber-800', bg: 'bg-amber-100' },
   CRITICAL: { color: 'text-red-700', bg: 'bg-red-100' },
 };
 

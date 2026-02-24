@@ -34,14 +34,14 @@ interface Need {
 const urgencyChipColors: Record<string, string> = {
   LOW: 'bg-gray-100 text-gray-600',
   MEDIUM: 'bg-blue-100 text-blue-700',
-  HIGH: 'bg-orange-100 text-orange-700',
+  HIGH: 'bg-amber-100 text-amber-800',
   CRITICAL: 'bg-red-100 text-red-700',
 };
 
 const urgencyBarColors: Record<string, string> = {
   LOW: 'bg-gray-300',
   MEDIUM: 'bg-blue-500',
-  HIGH: 'bg-orange-500',
+  HIGH: 'bg-amber-500',
   CRITICAL: 'bg-red-500',
 };
 
