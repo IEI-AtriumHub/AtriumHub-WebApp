@@ -25,8 +25,8 @@ export default function OrgBrandingToolPage() {
   const [organizationId, setOrganizationId] = useState<string>('');
   const [appName, setAppName] = useState<string>('');
   const [logoUrl, setLogoUrl] = useState<string>('');
-  const [primaryColor, setPrimaryColor] = useState<string>('#1D4ED8'); // default blue
-  const [secondaryColor, setSecondaryColor] = useState<string>('#111827'); // default gray-900
+  const [primaryColor, setPrimaryColor] = useState<string>('#1D4ED8');
+  const [secondaryColor, setSecondaryColor] = useState<string>('#111827');
 
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -38,14 +38,12 @@ export default function OrgBrandingToolPage() {
       setError(null);
 
       try {
-        // Keep this select minimal so it doesn't fail if branding columns don't exist yet.
         const { data, error } = await supabase
           .from('organizations')
           .select('id, display_name')
           .order('display_name', { ascending: true });
 
         if (error) throw error;
-
         setOrgs((data || []) as Org[]);
       } catch (e: any) {
         setError(e?.message || 'Failed to load organizations');
@@ -54,9 +52,7 @@ export default function OrgBrandingToolPage() {
       }
     };
 
-    if (!authLoading && user && isSuperAdmin) {
-      loadOrgs();
-    }
+    if (!authLoading && user && isSuperAdmin) loadOrgs();
   }, [authLoading, user, isSuperAdmin, supabase]);
 
   const saveBranding = async () => {
@@ -80,9 +76,25 @@ export default function OrgBrandingToolPage() {
 
     setSaving(true);
     try {
+      // ✅ Get current session token (required by your API route)
+      const {
+        data: { session },
+        error: sessionErr,
+      } = await supabase.auth.getSession();
+
+      if (sessionErr) throw sessionErr;
+
+      const token = session?.access_token;
+      if (!token) {
+        throw new Error('Not authenticated (missing session token). Please sign in again.');
+      }
+
       const res = await fetch('/api/admin/orgs/update-branding', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           organization_id: organizationId,
           app_name: appName || null,
@@ -163,9 +175,7 @@ export default function OrgBrandingToolPage() {
               </option>
             ))}
           </select>
-          <p className="text-xs text-gray-500 mt-2">
-            This tool updates branding via the API (no direct DB edits).
-          </p>
+          <p className="text-xs text-gray-500 mt-2">This tool updates branding via the API (no direct DB edits).</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -178,7 +188,7 @@ export default function OrgBrandingToolPage() {
               placeholder="e.g., Bethel"
             />
             <p className="text-xs text-gray-500 mt-2">
-              We’ll use this later for the org-specific PWA manifest + install prompt.
+              We’ll use this for org-specific header + manifest naming.
             </p>
           </div>
 
@@ -191,7 +201,7 @@ export default function OrgBrandingToolPage() {
               placeholder="https://..."
             />
             <p className="text-xs text-gray-500 mt-2">
-              Next step after this: true upload to Supabase Storage (so admins aren’t hosting images).
+              Next step: upload to Supabase Storage (so admins aren’t hosting images).
             </p>
           </div>
 
@@ -218,20 +228,30 @@ export default function OrgBrandingToolPage() {
 
         {/* Preview */}
         <div className="border rounded-lg p-4">
-          <p className="text-sm font-medium text-gray-700 mb-3">Preview</p>
+          <div className="text-sm font-medium text-gray-700 mb-3">Preview</div>
           <div className="flex items-center gap-3">
             <div
-              className="h-10 w-10 rounded-lg border flex items-center justify-center text-white font-semibold"
-              style={{ background: primaryColor }}
-              title="Primary color"
+              className="h-10 w-10 rounded-lg flex items-center justify-center text-white font-semibold"
+              style={{ backgroundColor: primaryColor }}
+              title="Icon preview"
             >
-              {appName?.trim()?.[0]?.toUpperCase() || 'A'}
+              {(appName || 'A').trim().charAt(0).toUpperCase()}
             </div>
-            <div>
-              <div className="text-sm font-semibold" style={{ color: secondaryColor }}>
-                {appName?.trim() || 'Org App Name'}
+            <div className="min-w-0">
+              <div className="font-semibold text-gray-900 truncate">
+                {(appName || '').trim() || 'Organization Name'}
               </div>
-              <div className="text-xs text-gray-500">This is just a preview — saved values apply everywhere next step.</div>
+              <div className="text-xs text-gray-500">
+                This is just a preview — saved values apply everywhere next step.
+              </div>
+            </div>
+          </div>
+          <div className="mt-3">
+            <div className="inline-flex items-center gap-2">
+              <span className="text-xs text-gray-500">Primary</span>
+              <span className="h-3 w-6 rounded" style={{ backgroundColor: primaryColor }} />
+              <span className="text-xs text-gray-500">Secondary</span>
+              <span className="h-3 w-6 rounded" style={{ backgroundColor: secondaryColor }} />
             </div>
           </div>
         </div>
