@@ -28,7 +28,7 @@ function urgencyBarClass(urgency: string | null | undefined) {
     case 'CRITICAL':
       return 'border-red-500';
     case 'HIGH':
-      return 'border-amber-500';
+      return 'border-purple-500';
     case 'MEDIUM':
       return 'border-blue-500';
     case 'LOW':

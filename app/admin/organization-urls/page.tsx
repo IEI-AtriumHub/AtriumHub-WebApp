@@ -428,7 +428,7 @@ export default function AdminPage() {
                             need.urgency === 'CRITICAL'
                               ? 'bg-red-100 text-red-700'
                               : need.urgency === 'HIGH'
-                              ? 'bg-amber-100 text-amber-800'
+                              ? 'bg-purple-100 text-purple-800'
                               : need.urgency === 'MEDIUM'
                               ? 'bg-blue-100 text-blue-700'
                               : 'bg-gray-100 text-gray-600'

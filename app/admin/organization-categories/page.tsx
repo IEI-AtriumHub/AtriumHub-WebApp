@@ -347,7 +347,7 @@ export default function OrganizationCategoriesPage() {
                             <div className="flex items-center gap-2">
                               <p className="font-medium text-gray-900">{category.name}</p>
                               {category.is_hidden && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-amber-100 text-amber-800">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-800">
                                   <EyeSlashIcon className="h-3 w-3" />
                                   Hidden by default
                                 </span>
