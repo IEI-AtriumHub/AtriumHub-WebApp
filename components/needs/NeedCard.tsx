@@ -9,6 +9,7 @@ import { NeedWithRelations } from '@/types';
 import { NeedStatusBadge } from '../ui/Badge';
 import Card, { CardContent, CardFooter } from '../ui/Card';
 import { formatDate, formatCurrency, cn } from '@/lib/utils';
+import { URGENCY_STYLES } from '@/lib/urgencyStyles';
 import {
   ClockIcon,
   UserIcon,
@@ -24,15 +25,6 @@ interface NeedCardProps {
 }
 
 export function NeedCard({ need, showGroup = true, onClick }: NeedCardProps) {
-  // Priority / urgency color system:
-  // Low: gray, Medium: blue, High: amber (replaces orange for better separation), Critical: red
-  const urgencyColors: Record<string, string> = {
-    LOW: 'border-l-gray-400',
-    MEDIUM: 'border-l-blue-400',
-    HIGH: 'border-l-amber-500',
-    CRITICAL: 'border-l-red-400',
-  };
-
   // Support multiple requester shapes depending on query aliasing:
   // - requester:requester_user_id (full_name, email)
   // - users:requester_user_id (full_name, email)
@@ -41,8 +33,12 @@ export function NeedCard({ need, showGroup = true, onClick }: NeedCardProps) {
     (need as any)?.users?.full_name ||
     'Anonymous';
 
+  const urgencyBarClass =
+    URGENCY_STYLES[(need.urgency as keyof typeof URGENCY_STYLES) ?? 'LOW']?.bar ??
+    URGENCY_STYLES.LOW.bar;
+
   const content = (
-    <Card hover className={cn('border-l-4', urgencyColors[need.urgency])}>
+    <Card hover className={cn('border-l-4', urgencyBarClass)}>
       <CardContent>
         {/* Header */}
         <div className="flex items-start justify-between mb-3">
