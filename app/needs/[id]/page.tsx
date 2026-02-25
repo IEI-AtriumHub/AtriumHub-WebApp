@@ -8,7 +8,10 @@ import Link from 'next/link';
 import Button from '@/components/ui/Button';
 import PageContainer from '@/components/layout/PageContainer';
 import toast from 'react-hot-toast';
-import { URGENCY_STYLES } from '@/lib/urgencyStyles';
+
+// ✅ Centralized urgency styling
+import { urgencyChipClasses, normalizeUrgency } from '@/lib/urgencyStyles';
+
 import {
   CalendarIcon,
   MapPinIcon,
@@ -434,8 +437,9 @@ export default function NeedDetailsPage() {
 
   const status = statusConfig[need.status] || statusConfig.DRAFT;
 
-  const urgencyKey = String(need.urgency || '').toUpperCase() as keyof typeof URGENCY_STYLES;
-  const urgency = URGENCY_STYLES[urgencyKey] ?? URGENCY_STYLES.MEDIUM;
+  // ✅ Correct + type-safe urgency normalization
+  const urgencyKey = normalizeUrgency(need.urgency);
+  const urgencyPillClass = urgencyChipClasses[urgencyKey];
 
   const isOwner = user?.id === need.requester_user_id;
   const isClaimedByMe = need.claimed_by === user?.id;
@@ -510,7 +514,7 @@ export default function NeedDetailsPage() {
                   {status.label}
                 </span>
 
-                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${urgency.pill}`}>
+                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${urgencyPillClass}`}>
                   {need.urgency} Urgency
                 </span>
 

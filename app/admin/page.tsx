@@ -6,6 +6,7 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import Link from 'next/link';
 import Button from '@/components/ui/Button';
 import toast from 'react-hot-toast';
+import { getUrgencyChipClass } from '@/lib/urgencyStyles';
 import {
   CheckCircleIcon,
   XCircleIcon,
@@ -378,7 +379,10 @@ export default function AdminPage() {
           )}
 
           {isSuperAdmin && (
-            <Link href="/admin/organization-categories" className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
+            <Link
+              href="/admin/organization-categories"
+              className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow"
+            >
               <TagIcon className="h-8 w-8 text-amber-600 mb-2" />
               <h3 className="font-semibold text-gray-900">Category Settings</h3>
               <p className="text-sm text-gray-500">Enable/disable categories per org</p>
@@ -422,18 +426,8 @@ export default function AdminPage() {
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="font-semibold text-gray-900">{need.title}</h3>
                         <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">{need.need_type}</span>
-                        <span
-                          className={`text-xs px-2 py-1 rounded ${
-                            need.urgency === 'CRITICAL'
-                              ? 'bg-red-100 text-red-700'
-                              : need.urgency === 'HIGH'
-                              ? 'bg-purple-100 text-purple-800'
-                              : need.urgency === 'MEDIUM'
-                              ? 'bg-blue-100 text-blue-700'
-                              : 'bg-gray-100 text-gray-600'
-                          }`}
-                        >
-                          {need.urgency}
+                        <span className={`text-xs px-2 py-1 rounded ${getUrgencyChipClass(need.urgency)}`}>
+                          {String(need.urgency || '').toUpperCase()}
                         </span>
                       </div>
                       <p className="text-sm text-gray-500 mb-2">

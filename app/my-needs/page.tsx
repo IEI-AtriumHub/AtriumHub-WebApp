@@ -8,6 +8,9 @@ import Button from '@/components/ui/Button';
 import PageContainer from '@/components/layout/PageContainer';
 import { PlusIcon } from '@heroicons/react/24/outline';
 
+// ✅ Centralized urgency styling
+import { getUrgencyBarClass, getUrgencyChipClass } from '@/lib/urgencyStyles';
+
 interface Need {
   id: string;
   title: string;
@@ -41,21 +44,6 @@ const statusLabels: Record<string, string> = {
   CLAIMED_IN_PROGRESS: 'In Progress',
   COMPLETED: 'Completed',
   REJECTED: 'Rejected',
-};
-
-const urgencyColors: Record<string, string> = {
-  LOW: 'bg-gray-100 text-gray-600',
-  MEDIUM: 'bg-blue-100 text-blue-700',
-  HIGH: 'bg-purple-100 text-purple-800',
-  CRITICAL: 'bg-red-100 text-red-700',
-};
-
-// Left color bar (stronger contrast than the badge)
-const urgencyBarColors: Record<string, string> = {
-  LOW: 'bg-gray-300',
-  MEDIUM: 'bg-blue-500',
-  HIGH: 'bg-purple-500',
-  CRITICAL: 'bg-red-500',
 };
 
 export default function MyNeedsPage() {
@@ -177,8 +165,8 @@ export default function MyNeedsPage() {
       ) : (
         <div className="grid gap-4">
           {needs.map((need) => {
-            const barColor =
-              urgencyBarColors[String(need.urgency || '').toUpperCase()] || 'bg-gray-300';
+            const barColor = getUrgencyBarClass(need.urgency);
+            const chipClass = getUrgencyChipClass(need.urgency);
 
             return (
               <Link key={need.id} href={`/needs/${need.id}`} className="block">
@@ -208,9 +196,7 @@ export default function MyNeedsPage() {
 
                       <div className="flex flex-col items-end gap-2 ml-4 shrink-0">
                         <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            urgencyColors[need.urgency] || 'bg-gray-100 text-gray-600'
-                          }`}
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${chipClass}`}
                         >
                           {need.urgency}
                         </span>

@@ -8,6 +8,7 @@ import Button from '@/components/ui/Button';
 import PageContainer from '@/components/layout/PageContainer';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { PlusIcon } from '@heroicons/react/24/outline';
+import { getUrgencyCardBorderClass } from '@/lib/urgencyStyles';
 
 type NeedPreview = {
   id: string;
@@ -21,21 +22,6 @@ type NeedPreview = {
 function normalizeOne<T>(value: any): T | null {
   if (!value) return null;
   return Array.isArray(value) ? (value[0] ?? null) : value;
-}
-
-function urgencyBarClass(urgency: string | null | undefined) {
-  switch ((urgency || '').toUpperCase()) {
-    case 'CRITICAL':
-      return 'border-red-500';
-    case 'HIGH':
-      return 'border-purple-500';
-    case 'MEDIUM':
-      return 'border-blue-500';
-    case 'LOW':
-      return 'border-gray-300';
-    default:
-      return 'border-gray-200';
-  }
 }
 
 export default function HomePage() {
@@ -103,7 +89,6 @@ export default function HomePage() {
 
   return (
     <PageContainer requireAuth>
-
       {/* NAV BUTTONS — LEFT ALIGNED */}
       <div className="flex gap-2 flex-wrap mb-4">
         <Link href="/needs">
@@ -151,8 +136,8 @@ export default function HomePage() {
                 <div
                   className={[
                     'bg-white rounded-lg shadow p-4 transition hover:shadow-md active:scale-[0.99]',
-                    'border-l-4',
-                    urgencyBarClass(n.urgency),
+                    'border',
+                    getUrgencyCardBorderClass(n.urgency),
                   ].join(' ')}
                 >
                   <div className="font-semibold text-gray-900">{n.title}</div>

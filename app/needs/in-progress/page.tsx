@@ -6,7 +6,9 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import Link from 'next/link';
 import Button from '@/components/ui/Button';
 import PageContainer from '@/components/layout/PageContainer';
-import { URGENCY_STYLES } from '@/lib/urgencyStyles';
+
+// ✅ Centralized urgency styling
+import { urgencyChipClasses, urgencyBarClasses, normalizeUrgency } from '@/lib/urgencyStyles';
 
 interface PersonLite {
   full_name: string;
@@ -192,13 +194,14 @@ export default function NeedsInProgressPage() {
             const requesterName = need.requester?.full_name?.trim() || 'Unknown';
             const helperName = need.helper?.full_name?.trim() || 'Unassigned';
 
-            const urgencyKey = String(need.urgency || '').toUpperCase() as keyof typeof URGENCY_STYLES;
+            // ✅ Always normalize so TS knows it's a valid UrgencyKey
+            const urgencyKey = normalizeUrgency(need.urgency);
 
-            // Left bar uses bg-* style
-            const bar = URGENCY_STYLES[urgencyKey]?.dot ?? URGENCY_STYLES.LOW.dot;
+            // Left bar uses bg-* class
+            const bar = urgencyBarClasses[urgencyKey];
 
-            // Chip uses pill style
-            const chip = URGENCY_STYLES[urgencyKey]?.pill ?? URGENCY_STYLES.LOW.pill;
+            // Chip uses bg/text class combo
+            const chip = urgencyChipClasses[urgencyKey];
 
             return (
               <Link key={need.id} href={`/needs/${need.id}`} className="block">
@@ -213,9 +216,7 @@ export default function NeedsInProgressPage() {
 
                       {/* Chips — ALWAYS below title (mobile + desktop) */}
                       <div className="mt-2 flex flex-wrap gap-2">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${chip}`}
-                        >
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${chip}`}>
                           {need.urgency}
                         </span>
 

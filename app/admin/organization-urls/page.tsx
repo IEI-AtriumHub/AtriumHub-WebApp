@@ -6,6 +6,7 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import Link from 'next/link';
 import Button from '@/components/ui/Button';
 import toast from 'react-hot-toast';
+import { getUrgencyChipClass } from '@/lib/urgencyStyles';
 import {
   CheckCircleIcon,
   XCircleIcon,
@@ -121,9 +122,7 @@ export default function AdminPage() {
           urgency: n.urgency,
           submitted_at: n.submitted_at,
           users: Array.isArray(n.users) ? (n.users[0] ?? null) : (n.users ?? null),
-          organizations: Array.isArray(n.organizations)
-            ? (n.organizations[0] ?? null)
-            : (n.organizations ?? null),
+          organizations: Array.isArray(n.organizations) ? (n.organizations[0] ?? null) : (n.organizations ?? null),
           groups: Array.isArray(n.groups) ? (n.groups[0] ?? null) : (n.groups ?? null),
         }));
 
@@ -321,7 +320,9 @@ export default function AdminPage() {
       <header className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
-          <p className="text-sm text-gray-500">{isSuperAdmin ? 'Super Admin - All Organizations' : 'Manage your organization'}</p>
+          <p className="text-sm text-gray-500">
+            {isSuperAdmin ? 'Super Admin - All Organizations' : 'Manage your organization'}
+          </p>
         </div>
       </header>
 
@@ -394,7 +395,9 @@ export default function AdminPage() {
           <Link href="/admin/users" className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
             <UsersIcon className="h-8 w-8 text-indigo-600 mb-2" />
             <h3 className="font-semibold text-gray-900">Manage Users</h3>
-            <p className="text-sm text-gray-500">{isSuperAdmin ? 'Edit roles & impersonate users' : 'Edit user roles and status'}</p>
+            <p className="text-sm text-gray-500">
+              {isSuperAdmin ? 'Edit roles & impersonate users' : 'Edit user roles and status'}
+            </p>
           </Link>
           <Link href="/admin/groups" className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
             <UserGroupIcon className="h-8 w-8 text-green-600 mb-2" />
@@ -423,18 +426,8 @@ export default function AdminPage() {
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="font-semibold text-gray-900">{need.title}</h3>
                         <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">{need.need_type}</span>
-                        <span
-                          className={`text-xs px-2 py-1 rounded ${
-                            need.urgency === 'CRITICAL'
-                              ? 'bg-red-100 text-red-700'
-                              : need.urgency === 'HIGH'
-                              ? 'bg-purple-100 text-purple-800'
-                              : need.urgency === 'MEDIUM'
-                              ? 'bg-blue-100 text-blue-700'
-                              : 'bg-gray-100 text-gray-600'
-                          }`}
-                        >
-                          {need.urgency}
+                        <span className={`text-xs px-2 py-1 rounded ${getUrgencyChipClass(need.urgency)}`}>
+                          {String(need.urgency || '').toUpperCase()}
                         </span>
                       </div>
                       <p className="text-sm text-gray-500 mb-2">

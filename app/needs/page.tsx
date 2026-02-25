@@ -7,7 +7,7 @@ import Link from 'next/link';
 import Button from '@/components/ui/Button';
 import PageContainer from '@/components/layout/PageContainer';
 import { PlusIcon, HandRaisedIcon } from '@heroicons/react/24/outline';
-import { URGENCY_STYLES } from '@/lib/urgencyStyles';
+import { URGENCY_STYLES, normalizeUrgency } from '@/lib/urgencyStyles';
 
 interface Need {
   id: string;
@@ -184,13 +184,13 @@ export default function NeedsPage() {
                   ? `Hidden (RLS) • ${shortId(need.requester_user_id)}`
                   : 'Missing requester';
 
-            const urgencyKey = String(need.urgency || '').toUpperCase() as keyof typeof URGENCY_STYLES;
+            const urgencyKey = normalizeUrgency(need.urgency);
 
-            // Left color bar (use "dot" style since it is bg-*)
-            const barColor = URGENCY_STYLES[urgencyKey]?.dot ?? URGENCY_STYLES.LOW.dot;
+            // Left color bar (bg-* style)
+            const barColor = URGENCY_STYLES[urgencyKey].dot;
 
             // Badge (pill) classes
-            const badgeClass = URGENCY_STYLES[urgencyKey]?.pill ?? URGENCY_STYLES.LOW.pill;
+            const badgeClass = URGENCY_STYLES[urgencyKey].pill;
 
             return (
               <div
@@ -240,9 +240,7 @@ export default function NeedsPage() {
                   </div>
 
                   <div className="mt-4 flex justify-between items-center">
-                    <span className="text-sm text-gray-400">
-                      {new Date(need.created_at).toLocaleDateString()}
-                    </span>
+                    <span className="text-sm text-gray-400">{new Date(need.created_at).toLocaleDateString()}</span>
 
                     <div className="flex gap-2">
                       {user?.id !== need.requester_user_id && (
