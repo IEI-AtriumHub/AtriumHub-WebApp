@@ -8,7 +8,7 @@ import Button from '@/components/ui/Button';
 import PageContainer from '@/components/layout/PageContainer';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { PlusIcon } from '@heroicons/react/24/outline';
-import { getUrgencyCardBorderClass } from '@/lib/urgencyStyles';
+import { getUrgencyBorderLeftClass } from '@/lib/urgencyStyles';
 
 type NeedPreview = {
   id: string;
@@ -136,8 +136,8 @@ export default function HomePage() {
                 <div
                   className={[
                     'bg-white rounded-lg shadow p-4 transition hover:shadow-md active:scale-[0.99]',
-                    'border',
-                    getUrgencyCardBorderClass(n.urgency),
+                    'border-l-4',
+                    getUrgencyBorderLeftClass(n.urgency),
                   ].join(' ')}
                 >
                   <div className="font-semibold text-gray-900">{n.title}</div>
