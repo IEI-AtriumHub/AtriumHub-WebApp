@@ -12,10 +12,10 @@ export function normalizeUrgency(value: unknown): UrgencyKey {
 /* ---------------------------------- */
 
 export const urgencyChipClasses: Record<UrgencyKey, string> = {
-  LOW: 'bg-gray-100 text-gray-600',
-  MEDIUM: 'bg-blue-100 text-blue-700',
-  HIGH: 'bg-purple-100 text-purple-800',
-  CRITICAL: 'bg-red-100 text-red-700',
+  LOW: 'bg-gray-200 text-gray-700',
+  MEDIUM: 'bg-blue-200 text-blue-800',
+  HIGH: 'bg-purple-200 text-purple-900',
+  CRITICAL: 'bg-red-200 text-red-900',
 };
 
 /* ---------------------------------- */
@@ -23,10 +23,10 @@ export const urgencyChipClasses: Record<UrgencyKey, string> = {
 /* ---------------------------------- */
 
 export const urgencyBarClasses: Record<UrgencyKey, string> = {
-  LOW: 'bg-gray-300',
+  LOW: 'bg-gray-400',
   MEDIUM: 'bg-blue-500',
-  HIGH: 'bg-purple-500',
-  CRITICAL: 'bg-red-500',
+  HIGH: 'bg-purple-600',
+  CRITICAL: 'bg-red-600',
 };
 
 /* ---------------------------------- */
@@ -35,20 +35,20 @@ export const urgencyBarClasses: Record<UrgencyKey, string> = {
 
 export const urgencyBorderLeftClasses: Record<UrgencyKey, string> = {
   LOW: 'border-l-gray-400',
-  MEDIUM: 'border-l-blue-400',
-  HIGH: 'border-l-purple-500',
-  CRITICAL: 'border-l-red-400',
+  MEDIUM: 'border-l-blue-500',
+  HIGH: 'border-l-purple-600',
+  CRITICAL: 'border-l-red-600',
 };
 
 /* ---------------------------------- */
-/* FULL CARD BORDER (NEW)             */
+/* FULL CARD BORDER                   */
 /* ---------------------------------- */
 
 export const urgencyCardBorderClasses: Record<UrgencyKey, string> = {
-  LOW: 'border-gray-200',
-  MEDIUM: 'border-blue-300',
-  HIGH: 'border-purple-400',
-  CRITICAL: 'border-red-300',
+  LOW: 'border-gray-400',
+  MEDIUM: 'border-blue-500',
+  HIGH: 'border-purple-600',
+  CRITICAL: 'border-red-600',
 };
 
 /* ---------------------------------- */
@@ -67,7 +67,6 @@ export function getUrgencyBorderLeftClass(value: unknown): string {
   return urgencyBorderLeftClasses[normalizeUrgency(value)];
 }
 
-/* NEW helper */
 export function getUrgencyCardBorderClass(value: unknown): string {
   return urgencyCardBorderClasses[normalizeUrgency(value)];
 }
