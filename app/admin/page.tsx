@@ -18,6 +18,7 @@ import {
   UsersIcon,
   TagIcon,
   Cog6ToothIcon,
+  PencilSquareIcon,
 } from '@heroicons/react/24/outline';
 
 interface PendingNeed {
@@ -278,6 +279,8 @@ export default function AdminPage() {
     return null;
   }
 
+  const canAdminEdit = isAdmin || isSuperAdmin;
+
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white border-b border-gray-200">
@@ -439,6 +442,15 @@ export default function AdminPage() {
                     </div>
 
                     <div className="flex gap-2 ml-4">
+                      {canAdminEdit && (
+                        <Link href={`/needs/${need.id}`}>
+                          <Button size="sm" variant="outline" disabled={processingId !== null}>
+                            <PencilSquareIcon className="h-4 w-4 mr-1" />
+                            Edit
+                          </Button>
+                        </Link>
+                      )}
+
                       <Button
                         size="sm"
                         onClick={() => handleApproveNeed(need.id)}
