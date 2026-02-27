@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useParams } from 'next/navigation';
@@ -61,8 +61,8 @@ interface Need {
   category_id: string | null;
 
   work_location: string | null;
-  work_start_date: string | null;
-  work_end_date: string | null;
+  work_start_date: string | null; // date (YYYY-MM-DD)
+  work_end_date: string | null; // date (YYYY-MM-DD)
   work_estimated_hours: number | null;
   work_skills_required: string[] | null;
   work_tools_needed: string[] | null;
@@ -70,19 +70,18 @@ interface Need {
   financial_amount: number | null;
   financial_currency: string | null;
   financial_purpose: string | null;
-  financial_due_date: string | null;
+  financial_due_date: string | null; // date (YYYY-MM-DD)
 
-  // ✅ EVENT fields exist in your schema; add them here so admin edit can support EVENT needs
-  event_date: string | null;
-  event_end_date: string | null;
+  event_date: string | null; // timestamptz
+  event_end_date: string | null; // timestamptz
   event_location: string | null;
   event_max_attendees: number | null;
   event_rsvp_required: boolean | null;
 
   users: { id: string; full_name: string; email: string } | null;
   organizations: { display_name: string; primary_color: string } | null;
-  groups: { name: string } | null;
-  need_categories: { name: string } | null;
+  groups: { id?: string; name: string } | null;
+  need_categories: { id?: string; name: string } | null;
 
   approved_by_user?: { full_name: string } | null;
   rejected_by_user?: { full_name: string } | null;
@@ -90,6 +89,8 @@ interface Need {
   completed_by_user?: { full_name: string; email: string } | null;
   cancelled_by_user?: { full_name: string } | null;
 }
+
+type SelectOption = { id: string; name: string };
 
 const statusConfig: Record<string, { color: string; bg: string; label: string }> = {
   DRAFT: { color: 'text-gray-700', bg: 'bg-gray-100', label: 'Draft' },
@@ -129,33 +130,24 @@ function normalizeJoin<T>(v: any): T | null {
   return v as T;
 }
 
-// Helpers for HTML date/time-local inputs
-function toDateInput(value: string | null | undefined): string {
-  if (!value) return '';
-  // expects YYYY-MM-DD
-  const d = new Date(value);
+/** Convert ISO datetime -> value for <input type="datetime-local"> (local) */
+function toDateTimeLocalValue(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
   const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function toDateTimeLocalInput(value: string | null | undefined): string {
-  if (!value) return '';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mi = String(d.getMinutes()).padStart(2, '0');
+  const mm = pad(d.getMonth() + 1);
+  const dd = pad(d.getDate());
+  const hh = pad(d.getHours());
+  const mi = pad(d.getMinutes());
   return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
 }
 
-function fromDateTimeLocalInput(value: string): string | null {
-  if (!value) return null;
-  const d = new Date(value);
+/** Convert datetime-local value -> ISO string */
+function fromDateTimeLocalValue(v: string): string | null {
+  if (!v) return null;
+  const d = new Date(v);
   if (Number.isNaN(d.getTime())) return null;
   return d.toISOString();
 }
@@ -165,82 +157,108 @@ export default function NeedDetailsPage() {
   const [need, setNeed] = useState<Need | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+
+  // Edit modal state
+  const [editOpen, setEditOpen] = useState(false);
+  const [groupsOptions, setGroupsOptions] = useState<SelectOption[]>([]);
+  const [categoriesOptions, setCategoriesOptions] = useState<SelectOption[]>([]);
+  const [editLoadingOptions, setEditLoadingOptions] = useState(false);
+
   const params = useParams();
   const supabase = createClientComponentClient();
   const needId = params.id as string;
 
-  // ---------------------------------------------------------------------------
-  // Reload helper (shared by initial load + after edits)
-  // ---------------------------------------------------------------------------
-  const reloadNeed = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('needs')
-      .select(
-        `
-          *,
-          users:requester_user_id (id, full_name, email),
-          organizations (display_name, primary_color),
-          groups (name),
-          need_categories (name),
-          approved_by_user:approved_by (full_name),
-          rejected_by_user:rejected_by (full_name),
-          claimed_by_user:claimed_by (full_name, email),
-          completed_by_user:completed_by (full_name, email),
-          cancelled_by_user:cancelled_by (full_name)
-        `
-      )
-      .eq('id', needId)
-      .single();
+  // Edit form fields
+  const [form, setForm] = useState({
+    title: '',
+    description: '',
+    group_id: '',
+    category_id: '',
 
-    if (error) {
-      const code = (error as any)?.code;
-      const status = (error as any)?.status;
+    work_location: '',
+    work_start_date: '',
+    work_end_date: '',
+    work_estimated_hours: '',
+    work_skills_required: '',
+    work_tools_needed: '',
 
-      if (code === 'PGRST116' || status === 406) {
-        setNeed(null);
-        return;
-      }
+    financial_amount: '',
+    financial_currency: '',
+    financial_purpose: '',
+    financial_due_date: '',
 
-      if (status === 401 || status === 403) {
-        setNeed(null);
-        toast.error('You do not have access to this need.');
-        return;
-      }
-
-      throw error;
-    }
-
-    // UI-only impersonation guard
-    if (
-      isImpersonating &&
-      organization?.id &&
-      (data as any)?.organization_id &&
-      (data as any).organization_id !== organization.id
-    ) {
-      setNeed(null);
-      return;
-    }
-
-    const normalized: Need = {
-      ...(data as any),
-      users: normalizeJoin<Need['users']>((data as any).users),
-      organizations: normalizeJoin<Need['organizations']>((data as any).organizations),
-      groups: normalizeJoin<Need['groups']>((data as any).groups),
-      need_categories: normalizeJoin<Need['need_categories']>((data as any).need_categories),
-      approved_by_user: normalizeJoin<Need['approved_by_user']>((data as any).approved_by_user),
-      rejected_by_user: normalizeJoin<Need['rejected_by_user']>((data as any).rejected_by_user),
-      claimed_by_user: normalizeJoin<Need['claimed_by_user']>((data as any).claimed_by_user),
-      completed_by_user: normalizeJoin<Need['completed_by_user']>((data as any).completed_by_user),
-      cancelled_by_user: normalizeJoin<Need['cancelled_by_user']>((data as any).cancelled_by_user),
-    };
-
-    setNeed(normalized);
-  }, [supabase, needId, isImpersonating, organization?.id]);
+    event_date: '',
+    event_end_date: '',
+    event_location: '',
+    event_max_attendees: '',
+    event_rsvp_required: false,
+  });
 
   useEffect(() => {
     const fetchNeed = async () => {
       try {
-        await reloadNeed();
+        const { data, error } = await supabase
+          .from('needs')
+          .select(
+            `
+            *,
+            users:requester_user_id (id, full_name, email),
+            organizations (display_name, primary_color),
+            groups (id, name),
+            need_categories (id, name),
+            approved_by_user:approved_by (full_name),
+            rejected_by_user:rejected_by (full_name),
+            claimed_by_user:claimed_by (full_name, email),
+            completed_by_user:completed_by (full_name, email),
+            cancelled_by_user:cancelled_by (full_name)
+          `
+          )
+          .eq('id', needId)
+          .single();
+
+        if (error) {
+          const code = (error as any)?.code;
+          const status = (error as any)?.status;
+
+          if (code === 'PGRST116' || status === 406) {
+            setNeed(null);
+            return;
+          }
+
+          if (status === 401 || status === 403) {
+            setNeed(null);
+            toast.error('You do not have access to this need.');
+            return;
+          }
+
+          throw error;
+        }
+
+        // UI-only impersonation guard
+        if (
+          isImpersonating &&
+          organization?.id &&
+          (data as any)?.organization_id &&
+          (data as any).organization_id !== organization.id
+        ) {
+          setNeed(null);
+          return;
+        }
+
+        const normalized: Need = {
+          ...(data as any),
+          users: normalizeJoin<Need['users']>((data as any).users),
+          organizations: normalizeJoin<Need['organizations']>((data as any).organizations),
+          groups: normalizeJoin<Need['groups']>((data as any).groups),
+          need_categories: normalizeJoin<Need['need_categories']>((data as any).need_categories),
+          approved_by_user: normalizeJoin<Need['approved_by_user']>((data as any).approved_by_user),
+          rejected_by_user: normalizeJoin<Need['rejected_by_user']>((data as any).rejected_by_user),
+          claimed_by_user: normalizeJoin<Need['claimed_by_user']>((data as any).claimed_by_user),
+          completed_by_user: normalizeJoin<Need['completed_by_user']>((data as any).completed_by_user),
+          cancelled_by_user: normalizeJoin<Need['cancelled_by_user']>((data as any).cancelled_by_user),
+        };
+
+        setNeed(normalized);
       } catch (error) {
         console.error('Error fetching need:', error);
         toast.error('Failed to load need details');
@@ -253,186 +271,8 @@ export default function NeedDetailsPage() {
     if (!authLoading && user && needId) {
       fetchNeed();
     }
-  }, [authLoading, user, needId, reloadNeed]);
+  }, [authLoading, user, needId, supabase, isImpersonating, organization?.id]);
 
-  // ---------------------------------------------------------------------------
-  // Admin Edit (PENDING_APPROVAL only) - uses RPC: admin_edit_need_pending
-  // ---------------------------------------------------------------------------
-  const [editOpen, setEditOpen] = useState(false);
-  const [editSaving, setEditSaving] = useState(false);
-
-  type EditForm = {
-    title: string;
-    description: string;
-    group_id: string; // keep as string for input; convert to uuid/null
-    category_id: string;
-
-    // WORK
-    work_location: string;
-    work_start_date: string; // YYYY-MM-DD
-    work_end_date: string; // YYYY-MM-DD
-    work_estimated_hours: string; // numeric input
-
-    // FINANCIAL
-    financial_amount: string;
-    financial_currency: string;
-    financial_purpose: string;
-    financial_due_date: string; // YYYY-MM-DD
-
-    // EVENT
-    event_date: string; // datetime-local
-    event_end_date: string; // datetime-local
-    event_location: string;
-    event_max_attendees: string; // integer input
-    event_rsvp_required: boolean;
-  };
-
-  const emptyEditForm: EditForm = {
-    title: '',
-    description: '',
-    group_id: '',
-    category_id: '',
-
-    work_location: '',
-    work_start_date: '',
-    work_end_date: '',
-    work_estimated_hours: '',
-
-    financial_amount: '',
-    financial_currency: 'USD',
-    financial_purpose: '',
-    financial_due_date: '',
-
-    event_date: '',
-    event_end_date: '',
-    event_location: '',
-    event_max_attendees: '',
-    event_rsvp_required: false,
-  };
-
-  const openEdit = () => {
-    if (!need) return;
-    setEditForm({
-      title: need.title ?? '',
-      description: need.description ?? '',
-      group_id: need.group_id ?? '',
-      category_id: need.category_id ?? '',
-
-      work_location: need.work_location ?? '',
-      work_start_date: toDateInput(need.work_start_date),
-      work_end_date: toDateInput(need.work_end_date),
-      work_estimated_hours: need.work_estimated_hours != null ? String(need.work_estimated_hours) : '',
-
-      financial_amount: need.financial_amount != null ? String(need.financial_amount) : '',
-      financial_currency: need.financial_currency ?? 'USD',
-      financial_purpose: need.financial_purpose ?? '',
-      financial_due_date: toDateInput(need.financial_due_date),
-
-      event_date: toDateTimeLocalInput(need.event_date),
-      event_end_date: toDateTimeLocalInput(need.event_end_date),
-      event_location: need.event_location ?? '',
-      event_max_attendees: need.event_max_attendees != null ? String(need.event_max_attendees) : '',
-      event_rsvp_required: !!need.event_rsvp_required,
-    });
-    setEditOpen(true);
-  };
-
-  const [editForm, setEditForm] = useState<EditForm>(emptyEditForm);
-
-  const closeEdit = () => {
-    if (editSaving) return;
-    setEditOpen(false);
-  };
-
-  const submitAdminEdit = async () => {
-    if (!need || !user) return;
-
-    // Hard guard in UI (DB also enforces)
-    if (need.status !== 'PENDING_APPROVAL' || !isAdmin) {
-      toast.error('This need is not eligible for admin editing.');
-      return;
-    }
-
-    setEditSaving(true);
-    try {
-      // Build RPC params: only send fields we actually want to change.
-      // If you send null, the function keeps existing via COALESCE.
-      // We'll send values; treat empty strings as "no change" for optional fields.
-      const params: Record<string, any> = {
-        need_uuid: need.id,
-        p_title: editForm.title?.trim() || null,
-        p_description: editForm.description?.trim() || null,
-      };
-
-      // group/category: allow clearing by setting to null (explicit)
-      // If the user leaves blank, we interpret as "no change" unless they purposely cleared it.
-      // Here, blank means "clear".
-      params.p_group_id = editForm.group_id.trim() ? editForm.group_id.trim() : null;
-      params.p_category_id = editForm.category_id.trim() ? editForm.category_id.trim() : null;
-
-      if (need.need_type === 'WORK') {
-        params.p_work_location = editForm.work_location.trim() ? editForm.work_location.trim() : null;
-        params.p_work_start_date = editForm.work_start_date ? editForm.work_start_date : null;
-        params.p_work_end_date = editForm.work_end_date ? editForm.work_end_date : null;
-
-        if (editForm.work_estimated_hours.trim() === '') {
-          params.p_work_estimated_hours = null;
-        } else {
-          const n = Number(editForm.work_estimated_hours);
-          params.p_work_estimated_hours = Number.isFinite(n) ? n : null;
-        }
-      }
-
-      if (need.need_type === 'FINANCIAL') {
-        if (editForm.financial_amount.trim() === '') {
-          params.p_financial_amount = null;
-        } else {
-          const n = Number(editForm.financial_amount);
-          params.p_financial_amount = Number.isFinite(n) ? n : null;
-        }
-
-        params.p_financial_currency = editForm.financial_currency.trim() ? editForm.financial_currency.trim() : null;
-        params.p_financial_purpose = editForm.financial_purpose.trim() ? editForm.financial_purpose.trim() : null;
-        params.p_financial_due_date = editForm.financial_due_date ? editForm.financial_due_date : null;
-      }
-
-      if (need.need_type === 'EVENT') {
-        params.p_event_date = editForm.event_date ? fromDateTimeLocalInput(editForm.event_date) : null;
-        params.p_event_end_date = editForm.event_end_date ? fromDateTimeLocalInput(editForm.event_end_date) : null;
-        params.p_event_location = editForm.event_location.trim() ? editForm.event_location.trim() : null;
-
-        if (editForm.event_max_attendees.trim() === '') {
-          params.p_event_max_attendees = null;
-        } else {
-          const n = parseInt(editForm.event_max_attendees, 10);
-          params.p_event_max_attendees = Number.isFinite(n) ? n : null;
-        }
-
-        params.p_event_rsvp_required = editForm.event_rsvp_required;
-      }
-
-      const { data, error } = await supabase.rpc('admin_edit_need_pending', params);
-
-      if (error) {
-        throw error;
-      }
-
-      // We got the updated needs row back, but without joins; easiest is just reload.
-      await reloadNeed();
-
-      setEditOpen(false);
-      toast.success('Need updated (pending approval).');
-    } catch (err: any) {
-      console.error('Admin edit error:', err);
-      toast.error(err?.message || 'Failed to update need');
-    } finally {
-      setEditSaving(false);
-    }
-  };
-
-  // ---------------------------------------------------------------------------
-  // Existing actions
-  // ---------------------------------------------------------------------------
   const handleClaim = async () => {
     if (!user || !need) return;
 
@@ -577,6 +417,187 @@ export default function NeedDetailsPage() {
     }
   };
 
+  const canAdminEdit = !!need && need.status === 'PENDING_APPROVAL' && isAdmin;
+
+  const openEditModal = async () => {
+    if (!need) return;
+
+    // Initialize form from current need (so the modal is pre-filled)
+    setForm({
+      title: need.title ?? '',
+      description: need.description ?? '',
+      group_id: need.group_id ?? '',
+      category_id: need.category_id ?? '',
+
+      work_location: need.work_location ?? '',
+      work_start_date: need.work_start_date ?? '',
+      work_end_date: need.work_end_date ?? '',
+      work_estimated_hours: need.work_estimated_hours != null ? String(need.work_estimated_hours) : '',
+      work_skills_required: Array.isArray(need.work_skills_required) ? need.work_skills_required.join(', ') : '',
+      work_tools_needed: Array.isArray(need.work_tools_needed) ? need.work_tools_needed.join(', ') : '',
+
+      financial_amount: need.financial_amount != null ? String(need.financial_amount) : '',
+      financial_currency: need.financial_currency ?? '',
+      financial_purpose: need.financial_purpose ?? '',
+      financial_due_date: need.financial_due_date ?? '',
+
+      event_date: toDateTimeLocalValue(need.event_date),
+      event_end_date: toDateTimeLocalValue(need.event_end_date),
+      event_location: need.event_location ?? '',
+      event_max_attendees: need.event_max_attendees != null ? String(need.event_max_attendees) : '',
+      event_rsvp_required: !!need.event_rsvp_required,
+    });
+
+    setEditOpen(true);
+
+    // Load group/category options for dropdowns (nice UX)
+    setEditLoadingOptions(true);
+    try {
+      const orgId = need.organization_id;
+
+      const [{ data: groupsData, error: groupsError }, { data: catsData, error: catsError }] = await Promise.all([
+        supabase
+          .from('groups')
+          .select('id, name')
+          .eq('organization_id', orgId)
+          .order('name', { ascending: true }),
+        supabase
+          .from('need_categories')
+          .select('id, name')
+          .eq('organization_id', orgId)
+          .order('name', { ascending: true }),
+      ]);
+
+      if (groupsError) console.warn('groups options load error:', groupsError);
+      if (catsError) console.warn('need_categories options load error:', catsError);
+
+      setGroupsOptions((groupsData ?? []) as SelectOption[]);
+      setCategoriesOptions((catsData ?? []) as SelectOption[]);
+    } catch (e) {
+      console.warn('Failed to load edit options:', e);
+    } finally {
+      setEditLoadingOptions(false);
+    }
+  };
+
+  const closeEditModal = () => setEditOpen(false);
+
+  const handleSaveEdit = async () => {
+    if (!need) return;
+
+    setProcessing(true);
+    try {
+      // Build RPC params
+      const params = {
+        need_uuid: need.id,
+
+        p_title: form.title,
+        p_description: form.description,
+
+        p_group_id: form.group_id || null,
+        p_category_id: form.category_id || null,
+
+        p_work_location: form.work_location || null,
+        p_work_start_date: form.work_start_date || null,
+        p_work_end_date: form.work_end_date || null,
+        p_work_estimated_hours: form.work_estimated_hours !== '' ? Number(form.work_estimated_hours) : null,
+        p_work_skills_required:
+          form.work_skills_required.trim() !== ''
+            ? form.work_skills_required
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : null,
+        p_work_tools_needed:
+          form.work_tools_needed.trim() !== ''
+            ? form.work_tools_needed
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : null,
+
+        p_financial_amount: form.financial_amount !== '' ? Number(form.financial_amount) : null,
+        p_financial_currency: form.financial_currency || null,
+        p_financial_purpose: form.financial_purpose || null,
+        p_financial_due_date: form.financial_due_date || null,
+
+        p_event_date: fromDateTimeLocalValue(form.event_date),
+        p_event_end_date: fromDateTimeLocalValue(form.event_end_date),
+        p_event_location: form.event_location || null,
+        p_event_max_attendees: form.event_max_attendees !== '' ? Number(form.event_max_attendees) : null,
+        p_event_rsvp_required: form.event_rsvp_required,
+      };
+
+      const { data, error } = await supabase.rpc('admin_edit_need_pending', params);
+
+      if (error) {
+        console.error('admin_edit_need_pending error:', error);
+        throw error;
+      }
+
+      // Depending on PostgREST, data might be object or array; normalize
+      const updatedRow = Array.isArray(data) ? data[0] : data;
+      if (!updatedRow) {
+        toast.success('Saved.');
+        closeEditModal();
+        return;
+      }
+
+      // Refresh joins (groups/categories names may have changed)
+      const { data: refreshed, error: refreshError } = await supabase
+        .from('needs')
+        .select(
+          `
+          *,
+          users:requester_user_id (id, full_name, email),
+          organizations (display_name, primary_color),
+          groups (id, name),
+          need_categories (id, name),
+          approved_by_user:approved_by (full_name),
+          rejected_by_user:rejected_by (full_name),
+          claimed_by_user:claimed_by (full_name, email),
+          completed_by_user:completed_by (full_name, email),
+          cancelled_by_user:cancelled_by (full_name)
+        `
+        )
+        .eq('id', need.id)
+        .single();
+
+      if (refreshError) {
+        // If refresh fails, still update core fields so UI looks right
+        setNeed((prev) =>
+          prev
+            ? ({
+                ...prev,
+                ...(updatedRow as any),
+              } as Need)
+            : prev
+        );
+      } else {
+        const normalized: Need = {
+          ...(refreshed as any),
+          users: normalizeJoin<Need['users']>((refreshed as any).users),
+          organizations: normalizeJoin<Need['organizations']>((refreshed as any).organizations),
+          groups: normalizeJoin<Need['groups']>((refreshed as any).groups),
+          need_categories: normalizeJoin<Need['need_categories']>((refreshed as any).need_categories),
+          approved_by_user: normalizeJoin<Need['approved_by_user']>((refreshed as any).approved_by_user),
+          rejected_by_user: normalizeJoin<Need['rejected_by_user']>((refreshed as any).rejected_by_user),
+          claimed_by_user: normalizeJoin<Need['claimed_by_user']>((refreshed as any).claimed_by_user),
+          completed_by_user: normalizeJoin<Need['completed_by_user']>((refreshed as any).completed_by_user),
+          cancelled_by_user: normalizeJoin<Need['cancelled_by_user']>((refreshed as any).cancelled_by_user),
+        };
+        setNeed(normalized);
+      }
+
+      toast.success('Need updated (pending approval).');
+      closeEditModal();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to save changes');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   // ✅ MUST be above any conditional returns (Rules of Hooks)
   const lifecycle = useMemo(() => {
     if (!need) return [];
@@ -672,11 +693,15 @@ export default function NeedDetailsPage() {
   const canComplete = need.status === 'CLAIMED_IN_PROGRESS' && (isClaimedByMe || isOwner || isAdmin);
   const canApprove = need.status === 'PENDING_APPROVAL' && isAdmin;
 
-  // ✅ NEW: admin edit only when pending approval
-  const canAdminEditPending = need.status === 'PENDING_APPROVAL' && isAdmin;
-
   const actionButtons = (
-    <div className="flex gap-2">
+    <div className="flex gap-2 flex-wrap">
+      {canAdminEdit && (
+        <Button onClick={openEditModal} loading={processing}>
+          <PencilSquareIcon className="h-4 w-4 mr-2" />
+          Edit (Pending)
+        </Button>
+      )}
+
       {canApprove && (
         <>
           <Button onClick={handleApprove} loading={processing}>
@@ -687,20 +712,16 @@ export default function NeedDetailsPage() {
             <XCircleIcon className="h-4 w-4 mr-2" />
             Reject
           </Button>
-
-          {/* ✅ NEW: Edit (Pending Only) */}
-          <Button variant="secondary" onClick={openEdit} loading={processing || editSaving}>
-            <PencilSquareIcon className="h-4 w-4 mr-2" />
-            Edit
-          </Button>
         </>
       )}
+
       {canClaim && (
         <Button onClick={handleClaim} loading={processing} size="lg">
           <HandRaisedIcon className="h-5 w-5 mr-2" />
           I Can Help!
         </Button>
       )}
+
       {canComplete && (
         <Button onClick={handleMarkComplete} loading={processing}>
           <CheckCircleIcon className="h-4 w-4 mr-2" />
@@ -712,240 +733,250 @@ export default function NeedDetailsPage() {
 
   return (
     <PageContainer actions={actionButtons}>
-      {/* ✅ Admin Edit Modal */}
-      {editOpen && canAdminEditPending && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-2xl bg-white rounded-lg shadow-xl overflow-hidden">
+      {/* Edit Modal */}
+      {editOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/40" onClick={closeEditModal} />
+          <div className="relative w-full max-w-4xl bg-white rounded-xl shadow-xl overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">Edit Need (Pending Approval)</h2>
-                <p className="text-sm text-gray-500">Changes are allowed only while the need is pending approval.</p>
+                <p className="text-sm text-gray-500">Admins can edit only while status is Pending Approval.</p>
               </div>
               <button
-                onClick={closeEdit}
+                onClick={closeEditModal}
                 className="p-2 rounded-md hover:bg-gray-100"
                 aria-label="Close"
-                disabled={editSaving}
               >
                 <XMarkIcon className="h-5 w-5 text-gray-600" />
               </button>
             </div>
 
-            <div className="px-6 py-5 space-y-5">
-              {/* Common fields */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Title</label>
-                <input
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900"
-                  value={editForm.title}
-                  onChange={(e) => setEditForm((p) => ({ ...p, title: e.target.value }))}
-                  disabled={editSaving}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Description</label>
-                <textarea
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 min-h-[120px]"
-                  value={editForm.description}
-                  onChange={(e) => setEditForm((p) => ({ ...p, description: e.target.value }))}
-                  disabled={editSaving}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="px-6 py-5 max-h-[75vh] overflow-y-auto">
+              {/* Title / Description */}
+              <div className="grid grid-cols-1 gap-4 mb-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Group ID (optional)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
                   <input
-                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900"
-                    value={editForm.group_id}
-                    onChange={(e) => setEditForm((p) => ({ ...p, group_id: e.target.value }))}
-                    placeholder="uuid or blank to clear"
-                    disabled={editSaving}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2"
+                    value={form.title}
+                    onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
                   />
-                  <p className="mt-1 text-xs text-gray-500">Leave blank to clear. (No group selection UI here yet.)</p>
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Category ID (optional)</label>
-                  <input
-                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900"
-                    value={editForm.category_id}
-                    onChange={(e) => setEditForm((p) => ({ ...p, category_id: e.target.value }))}
-                    placeholder="uuid or blank to clear"
-                    disabled={editSaving}
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                  <textarea
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 min-h-[110px]"
+                    value={form.description}
+                    onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                   />
-                  <p className="mt-1 text-xs text-gray-500">Leave blank to clear. (No category selection UI here yet.)</p>
                 </div>
               </div>
 
-              {/* Type-specific */}
-              {need.need_type === 'WORK' && (
-                <div className="rounded-lg border border-gray-200 p-4">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Work Details</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700">Location</label>
-                      <input
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900"
-                        value={editForm.work_location}
-                        onChange={(e) => setEditForm((p) => ({ ...p, work_location: e.target.value }))}
-                        disabled={editSaving}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Start Date</label>
-                      <input
-                        type="date"
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900"
-                        value={editForm.work_start_date}
-                        onChange={(e) => setEditForm((p) => ({ ...p, work_start_date: e.target.value }))}
-                        disabled={editSaving}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">End Date</label>
-                      <input
-                        type="date"
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900"
-                        value={editForm.work_end_date}
-                        onChange={(e) => setEditForm((p) => ({ ...p, work_end_date: e.target.value }))}
-                        disabled={editSaving}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Estimated Hours</label>
-                      <input
-                        inputMode="decimal"
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900"
-                        value={editForm.work_estimated_hours}
-                        onChange={(e) => setEditForm((p) => ({ ...p, work_estimated_hours: e.target.value }))}
-                        placeholder="e.g., 3.5"
-                        disabled={editSaving}
-                      />
-                    </div>
+              {/* Group / Category */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Group</label>
+                  <select
+                    className="w-full border border-gray-300 rounded-md px-3 py-2"
+                    value={form.group_id}
+                    onChange={(e) => setForm((f) => ({ ...f, group_id: e.target.value }))}
+                    disabled={editLoadingOptions}
+                  >
+                    <option value="">No group</option>
+                    {groupsOptions.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                  {editLoadingOptions && <p className="text-xs text-gray-400 mt-1">Loading…</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                  <select
+                    className="w-full border border-gray-300 rounded-md px-3 py-2"
+                    value={form.category_id}
+                    onChange={(e) => setForm((f) => ({ ...f, category_id: e.target.value }))}
+                    disabled={editLoadingOptions}
+                  >
+                    <option value="">No category</option>
+                    {categoriesOptions.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  {editLoadingOptions && <p className="text-xs text-gray-400 mt-1">Loading…</p>}
+                </div>
+              </div>
+
+              {/* Work */}
+              <div className="border border-gray-200 rounded-lg p-4 mb-6">
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Work Fields</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Location</label>
+                    <input
+                      className="w-full border border-gray-300 rounded-md px-3 py-2"
+                      value={form.work_location}
+                      onChange={(e) => setForm((f) => ({ ...f, work_location: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Estimated Hours</label>
+                    <input
+                      type="number"
+                      step="0.25"
+                      className="w-full border border-gray-300 rounded-md px-3 py-2"
+                      value={form.work_estimated_hours}
+                      onChange={(e) => setForm((f) => ({ ...f, work_estimated_hours: e.target.value }))}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Start Date</label>
+                    <input
+                      type="date"
+                      className="w-full border border-gray-300 rounded-md px-3 py-2"
+                      value={form.work_start_date}
+                      onChange={(e) => setForm((f) => ({ ...f, work_start_date: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">End Date</label>
+                    <input
+                      type="date"
+                      className="w-full border border-gray-300 rounded-md px-3 py-2"
+                      value={form.work_end_date}
+                      onChange={(e) => setForm((f) => ({ ...f, work_end_date: e.target.value }))}
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm text-gray-700 mb-1">Skills Required (comma-separated)</label>
+                    <input
+                      className="w-full border border-gray-300 rounded-md px-3 py-2"
+                      value={form.work_skills_required}
+                      onChange={(e) => setForm((f) => ({ ...f, work_skills_required: e.target.value }))}
+                      placeholder="e.g., Painting, Carpentry, Babysitting"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm text-gray-700 mb-1">Tools Needed (comma-separated)</label>
+                    <input
+                      className="w-full border border-gray-300 rounded-md px-3 py-2"
+                      value={form.work_tools_needed}
+                      onChange={(e) => setForm((f) => ({ ...f, work_tools_needed: e.target.value }))}
+                      placeholder="e.g., Ladder, Drill, Truck"
+                    />
                   </div>
                 </div>
-              )}
+              </div>
 
-              {need.need_type === 'FINANCIAL' && (
-                <div className="rounded-lg border border-gray-200 p-4">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Financial Details</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Amount</label>
-                      <input
-                        inputMode="decimal"
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900"
-                        value={editForm.financial_amount}
-                        onChange={(e) => setEditForm((p) => ({ ...p, financial_amount: e.target.value }))}
-                        placeholder="e.g., 250"
-                        disabled={editSaving}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Currency</label>
-                      <input
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900"
-                        value={editForm.financial_currency}
-                        onChange={(e) => setEditForm((p) => ({ ...p, financial_currency: e.target.value }))}
-                        placeholder="USD"
-                        disabled={editSaving}
-                      />
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700">Purpose</label>
-                      <input
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900"
-                        value={editForm.financial_purpose}
-                        onChange={(e) => setEditForm((p) => ({ ...p, financial_purpose: e.target.value }))}
-                        disabled={editSaving}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Due Date</label>
-                      <input
-                        type="date"
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900"
-                        value={editForm.financial_due_date}
-                        onChange={(e) => setEditForm((p) => ({ ...p, financial_due_date: e.target.value }))}
-                        disabled={editSaving}
-                      />
-                    </div>
+              {/* Financial */}
+              <div className="border border-gray-200 rounded-lg p-4 mb-6">
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Financial Fields</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Amount</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="w-full border border-gray-300 rounded-md px-3 py-2"
+                      value={form.financial_amount}
+                      onChange={(e) => setForm((f) => ({ ...f, financial_amount: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Currency</label>
+                    <input
+                      className="w-full border border-gray-300 rounded-md px-3 py-2"
+                      value={form.financial_currency}
+                      onChange={(e) => setForm((f) => ({ ...f, financial_currency: e.target.value }))}
+                      placeholder="USD"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Due Date</label>
+                    <input
+                      type="date"
+                      className="w-full border border-gray-300 rounded-md px-3 py-2"
+                      value={form.financial_due_date}
+                      onChange={(e) => setForm((f) => ({ ...f, financial_due_date: e.target.value }))}
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm text-gray-700 mb-1">Purpose</label>
+                    <textarea
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 min-h-[90px]"
+                      value={form.financial_purpose}
+                      onChange={(e) => setForm((f) => ({ ...f, financial_purpose: e.target.value }))}
+                    />
                   </div>
                 </div>
-              )}
+              </div>
 
-              {need.need_type === 'EVENT' && (
-                <div className="rounded-lg border border-gray-200 p-4">
-                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Event Details</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Start</label>
-                      <input
-                        type="datetime-local"
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900"
-                        value={editForm.event_date}
-                        onChange={(e) => setEditForm((p) => ({ ...p, event_date: e.target.value }))}
-                        disabled={editSaving}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">End</label>
-                      <input
-                        type="datetime-local"
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900"
-                        value={editForm.event_end_date}
-                        onChange={(e) => setEditForm((p) => ({ ...p, event_end_date: e.target.value }))}
-                        disabled={editSaving}
-                      />
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700">Location</label>
-                      <input
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900"
-                        value={editForm.event_location}
-                        onChange={(e) => setEditForm((p) => ({ ...p, event_location: e.target.value }))}
-                        disabled={editSaving}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Max Attendees</label>
-                      <input
-                        inputMode="numeric"
-                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900"
-                        value={editForm.event_max_attendees}
-                        onChange={(e) => setEditForm((p) => ({ ...p, event_max_attendees: e.target.value }))}
-                        placeholder="e.g., 50"
-                        disabled={editSaving}
-                      />
-                    </div>
-
-                    <div className="flex items-center gap-2 mt-6">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4"
-                        checked={editForm.event_rsvp_required}
-                        onChange={(e) => setEditForm((p) => ({ ...p, event_rsvp_required: e.target.checked }))}
-                        disabled={editSaving}
-                      />
-                      <label className="text-sm text-gray-700">RSVP required</label>
-                    </div>
+              {/* Event */}
+              <div className="border border-gray-200 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Event Fields</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Event Start</label>
+                    <input
+                      type="datetime-local"
+                      className="w-full border border-gray-300 rounded-md px-3 py-2"
+                      value={form.event_date}
+                      onChange={(e) => setForm((f) => ({ ...f, event_date: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Event End</label>
+                    <input
+                      type="datetime-local"
+                      className="w-full border border-gray-300 rounded-md px-3 py-2"
+                      value={form.event_end_date}
+                      onChange={(e) => setForm((f) => ({ ...f, event_end_date: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Location</label>
+                    <input
+                      className="w-full border border-gray-300 rounded-md px-3 py-2"
+                      value={form.event_location}
+                      onChange={(e) => setForm((f) => ({ ...f, event_location: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Max Attendees</label>
+                    <input
+                      type="number"
+                      className="w-full border border-gray-300 rounded-md px-3 py-2"
+                      value={form.event_max_attendees}
+                      onChange={(e) => setForm((f) => ({ ...f, event_max_attendees: e.target.value }))}
+                    />
+                  </div>
+                  <div className="md:col-span-2 flex items-center gap-2">
+                    <input
+                      id="rsvp_required"
+                      type="checkbox"
+                      checked={form.event_rsvp_required}
+                      onChange={(e) => setForm((f) => ({ ...f, event_rsvp_required: e.target.checked }))}
+                    />
+                    <label htmlFor="rsvp_required" className="text-sm text-gray-700">
+                      RSVP Required
+                    </label>
                   </div>
                 </div>
-              )}
+              </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-gray-200 bg-gray-50">
-              <Button variant="secondary" onClick={closeEdit} disabled={editSaving}>
+            <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-end gap-2">
+              <Button variant="secondary" onClick={closeEditModal} disabled={processing}>
                 Cancel
               </Button>
-              <Button onClick={submitAdminEdit} loading={editSaving}>
+              <Button onClick={handleSaveEdit} loading={processing}>
                 Save Changes
               </Button>
             </div>
@@ -989,7 +1020,9 @@ export default function NeedDetailsPage() {
                   {status.label}
                 </span>
 
-                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${urgencyPillClass}`}>
+                <span
+                  className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${urgencyPillClass}`}
+                >
                   {need.urgency} Urgency
                 </span>
 
