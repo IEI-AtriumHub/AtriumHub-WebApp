@@ -8,11 +8,6 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import toast from 'react-hot-toast';
 
-interface Group {
-  id: string;
-  name: string;
-}
-
 /**
  * Inner component that is allowed to use useSearchParams().
  * This MUST be wrapped in <Suspense /> at the page level.
@@ -25,8 +20,6 @@ function SignupInner() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [selectedGroupId, setSelectedGroupId] = useState('');
-  const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [orgLoading, setOrgLoading] = useState(true);
@@ -57,7 +50,7 @@ function SignupInner() {
     return searchParams.get('org');
   }, [searchParams]);
 
-  // Load organization + groups
+  // Load organization
   useEffect(() => {
     async function getOrganization() {
       setOrgLoading(true);
@@ -99,15 +92,6 @@ function SignupInner() {
       }
 
       setOrganization({ id: data.id, display_name: data.display_name });
-
-      const { data: groupsData } = await supabase
-        .from('groups')
-        .select('id, name')
-        .eq('organization_id', data.id)
-        .eq('is_active', true)
-        .order('name');
-
-      setGroups(groupsData || []);
       setOrgLoading(false);
     }
 
@@ -127,11 +111,6 @@ function SignupInner() {
       return;
     }
 
-    if (groups.length > 0 && !selectedGroupId) {
-      toast.error('Please select a group');
-      return;
-    }
-
     setLoading(true);
 
     try {
@@ -139,7 +118,7 @@ function SignupInner() {
        * IMPORTANT:
        * - We do NOT insert into public.users from the browser.
        * - Your DB trigger (auth.users -> handle_new_user()) creates the public.users row securely.
-       * - We pass org/group metadata to Auth so the trigger can use it if configured.
+       * - We pass organization metadata to Auth so the trigger can use it if configured.
        */
       const emailRedirectTo =
         typeof window !== 'undefined'
@@ -154,7 +133,6 @@ function SignupInner() {
           data: {
             full_name: fullName,
             organization_id: organization.id,
-            group_id: selectedGroupId || null,
           },
         },
       });
@@ -218,25 +196,6 @@ function SignupInner() {
               onChange={(e) => setEmail(e.target.value)}
               required
             />
-
-            {groups.length > 0 && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Select Your Group</label>
-                <select
-                  value={selectedGroupId}
-                  onChange={(e) => setSelectedGroupId(e.target.value)}
-                  required
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                >
-                  <option value="">-- Select a Group --</option>
-                  {groups.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
 
             <Input
               label="Password"
